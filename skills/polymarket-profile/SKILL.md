@@ -11,7 +11,28 @@ Generate a complete trading profile for any Polymarket address. All data comes f
 
 ## Trigger
 
-User provides a Polymarket address (0x...) and wants analysis, profile, or trading overview.
+User provides a Polymarket identity and wants analysis, profile, or trading overview.
+
+## Input Resolution
+
+The skill requires a **0x proxy wallet address**. Users may provide:
+
+| Input Type | Example | How to handle |
+|-----------|---------|---------------|
+| **0x address** | `0x13e1f69d...` | Use directly |
+| **Profile URL** | `polymarket.com/profile/runes-leo` | Ask user for the 0x address (see below) |
+| **Username** | `runes-leo` | Ask user for the 0x address (see below) |
+
+### When user provides a username or URL (not 0x address)
+
+There is no public API to resolve usernames to addresses. Guide the user:
+
+> "I need the wallet address to run the profile. You can find it by:
+> 1. Open the profile page on Polymarket
+> 2. Click the address/wallet icon near the username — it copies the 0x address
+> 3. Or check the browser URL — some profile pages show the address"
+
+NOTE: lb-api `profit` endpoint returns a leaderboard with `name` and `proxyWallet` fields, but only the top ~50 accounts. If the target user is in the top 50, you can match by name. For all others, the 0x address is required.
 
 ## API Endpoints
 
