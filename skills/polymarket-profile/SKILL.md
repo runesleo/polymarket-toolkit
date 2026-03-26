@@ -68,8 +68,10 @@ curl -s "https://lb-api.polymarket.com/profit?window=30d&address={ADDRESS}"
 ### Step 2: Current Positions
 
 ```bash
-curl -s "https://data-api.polymarket.com/positions?user={ADDRESS}&sizeThreshold=0&limit=100"
+curl -s "https://data-api.polymarket.com/positions?user={ADDRESS}&sizeThreshold=0&limit=100&offset=0"
 ```
+
+Paginate with `offset` parameter: if response returns exactly 100 records, fetch next page with `offset=100`, `offset=200`, etc. until fewer than 100 returned.
 
 Each position object contains:
 
@@ -115,10 +117,20 @@ IMPORTANT: Do NOT use `cashPnl > 0` to determine wins. Winning positions have `c
 curl -s "https://data-api.polymarket.com/activity?user={ADDRESS}&limit=500"
 ```
 
-IMPORTANT: Pagination uses `end` timestamp parameter, NOT offset. To get more data:
-```bash
-curl -s "https://data-api.polymarket.com/activity?user={ADDRESS}&limit=500&end={last_timestamp}"
+IMPORTANT: You MUST paginate to get complete data. Large accounts have 10,000+ records. 500 records is NOT enough for an accurate profile.
+
+### Activity Pagination (REQUIRED)
+
 ```
+Loop:
+  1. First request: /activity?user={ADDRESS}&limit=500
+  2. Get `timestamp` of the LAST record in the response
+  3. Next request: /activity?user={ADDRESS}&limit=500&end={last_timestamp}
+  4. Repeat until response returns fewer than 500 records (= last page)
+  5. Merge all results
+```
+
+Inform user of progress for large accounts: "Fetching activity... page X (Y records so far)"
 
 Each activity object contains: `type`, `size`, `usdcSize`, `price`, `side`, `title`, `slug`, `timestamp`, `outcome`.
 
