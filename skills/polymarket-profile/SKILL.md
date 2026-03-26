@@ -181,17 +181,60 @@ Gamma API categories are legacy naming. Map to Polymarket's frontend categories:
 
 Compute the percentage distribution by volume invested.
 
-### Step 5: Top Trades
+### Step 5: Strategy Pattern Detection
 
-From the activity data (Step 3), identify:
-- **Top 3 Wins**: Largest positive PnL trades (BUY→REDEEM or BUY→SELL with profit)
-- **Top 3 Losses**: Largest negative PnL trades
+Analyze data from Steps 1-4 to classify the address into a trading pattern. Use multiple dimensions — no single metric is sufficient.
 
-For each, include: market name, direction, entry price, exit/settlement price, PnL amount.
+#### Dimensions to compute
 
-NOTE: Calculating per-trade PnL requires matching BUY entries with corresponding SELL/REDEEM. Group by market, compute avg entry price vs exit price × size.
+From **activity** data:
+- `trade_count`: total TRADE records
+- `split_count` / `split_volume`: SPLIT records and USDC volume
+- `merge_count` / `merge_volume`: MERGE records and USDC volume
+- `redeem_volume`: total REDEEM volume
+- `unique_markets`: number of distinct `slug` values
+- `avg_trade_size`: total trade volume / trade count
+- `trade_frequency`: trade count / active days (first to last timestamp)
 
-### Step 6: Assemble Profile
+From **positions** data:
+- `open_count`: open positions (not redeemable)
+- `settled_count`: won + lost
+- `concentration`: top 3 positions as % of total invested
+
+#### Pattern Classification
+
+Evaluate in this order (first match wins):
+
+| Pattern | Conditions | Description |
+|---------|-----------|-------------|
+| **SPLIT Arbitrage** | `split_volume > trade_volume × 0.2` AND `merge_volume > 0` | Enters via SPLIT (creates YES+NO pairs), sells one side or MERGEs back. Capital-efficient, market-neutral entry. |
+| **Market Maker** | `trade_count > 500` AND `unique_markets < 15` AND `avg_trade_size < $20` | High-frequency small trades concentrated in few markets. Provides liquidity, earns spread. |
+| **Whale / Concentrated** | `concentration > 60%` AND `unique_markets < 10` | Heavy capital in a few markets. High-conviction directional bets. |
+| **Diversified** | `unique_markets > 50` | Spread across many markets. Portfolio approach, lower per-market risk. |
+| **Small Trader** | `trade_count < 50` AND `total_invested < $500` | Limited activity. New or casual user. |
+| **Mixed** | None of the above | Combination of strategies, no dominant pattern. |
+
+#### Output format
+
+```
+🎯 Strategy Pattern: {pattern_name}
+   {1-2 sentence explanation based on actual numbers}
+   Key metrics: {trade_count} trades across {unique_markets} markets, avg ${avg_trade_size}/trade
+```
+
+Do NOT reveal specific thresholds used for classification. Just state the pattern name and explain it in plain language using the trader's actual data.
+
+### Step 6: Top Trades
+
+From **positions** data (not activity), use `cashPnl` field for settled positions:
+- **Top 5 Wins**: Settled positions with highest positive `cashPnl`
+- **Top 5 Losses**: Settled positions with most negative `cashPnl`
+
+For each: market title, outcome (Yes/No), entry price (`avgPrice`), PnL amount.
+
+NOTE: `cashPnl` from positions is approximate (affected by partial sells). This is acceptable for v0.1. Do NOT attempt to match individual BUY→SELL/REDEEM from activity — that requires complex logic and is not worth the accuracy gain for a profile overview.
+
+### Step 7: Assemble Profile
 
 Output the complete profile in this format:
 
