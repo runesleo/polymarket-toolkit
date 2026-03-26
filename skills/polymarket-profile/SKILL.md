@@ -2,7 +2,7 @@
 name: polymarket-profile
 description: Polymarket address profiler — input any 0x address, get a complete trading profile with PnL, win rate, positions, category breakdown, and top trades. All data from public APIs, no local database needed.
 allowed-tools: Bash(curl:*) Bash(node:*) Read Write Edit
-metadata: {"version":"1.0.0","openclaw":{"skillKey":"polymarket-profile","homepage":"https://leolabs.me","requires":{"anyBins":["curl","node"]}}}
+metadata: {"version":"0.1.0","openclaw":{"skillKey":"polymarket-profile","homepage":"https://leolabs.me","requires":{"anyBins":["curl","node"]}}}
 ---
 
 # Polymarket Address Profile
@@ -91,11 +91,23 @@ Each position object contains:
 | `eventSlug` | Event identifier for Gamma API |
 
 Extract:
-- Number of active positions (where `currentValue > 0` or `redeemable`)
-- Largest position by `initialValue`
-- Total portfolio value: sum of `currentValue`
-- Win/loss count: compute from settled positions (`curPrice == 0` or `curPrice == 1`)
-- Win rate: positions where outcome was correct / total settled
+- Number of open positions: `redeemable == false` AND `currentValue > 0`
+- Largest position by `currentValue`
+- Total portfolio value: sum of `currentValue` for open positions
+
+### Win Rate Calculation
+
+Classify positions into three buckets:
+
+| Bucket | Condition | Meaning |
+|--------|-----------|---------|
+| **Won** | `redeemable == true` AND `currentValue > 0` | Market settled in user's favor, awaiting redemption |
+| **Lost** | `redeemable == true` AND `currentValue == 0` | Market settled against user |
+| **Open** | `redeemable == false` AND `currentValue > 0` | Market not yet settled |
+
+Win Rate = Won / (Won + Lost)
+
+IMPORTANT: Do NOT use `cashPnl > 0` to determine wins. Winning positions have `currentValue > 0` (shares worth $1) even if `cashPnl` appears negative due to partial sells. The `redeemable` flag is the definitive settlement indicator.
 
 ### Step 3: Activity History
 
