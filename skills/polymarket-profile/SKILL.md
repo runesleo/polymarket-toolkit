@@ -150,20 +150,36 @@ Count and sum `usdcSize` for each type. Also track unique markets (`slug`) for d
 
 ### Step 4: Market Categories
 
-For each active position from Step 2, fetch market metadata:
+For each position, fetch market metadata via Gamma API using the `eventSlug` from positions:
 
 ```bash
-curl -s "https://gamma-api.polymarket.com/events?slug={market_slug}"
+curl -s "https://gamma-api.polymarket.com/events?slug={eventSlug}"
 ```
 
-Or batch via condition IDs from positions:
-```bash
-curl -s "https://gamma-api.polymarket.com/markets?condition_id={CONDITION_ID}"
-```
+Or batch multiple slugs. Each event has a `category` field and a `tags` array (each tag has a `label` field).
 
-Categorize into: Politics | Crypto | Sports | Weather | Finance | Geopolitics | Entertainment | Science | Other
+#### Category Mapping
 
-Compute the percentage distribution.
+Gamma API categories are legacy naming. Map to Polymarket's frontend categories:
+
+| Gamma category / tag label | Display Category |
+|---------------------------|-----------------|
+| `Sports`, `NBA Playoffs`, `Chess`, `Esports`, any sports team name | **Sports** |
+| `Crypto`, `NFTs`, `Bitcoin`, `Ethereum` | **Crypto** |
+| `US-current-affairs`, `Elections`, any president/congress/party keyword | **Politics** |
+| `Ukraine & Russia`, `Iran`, any war/military/invasion keyword | **Geopolitics** |
+| `Business`, any GDP/oil/fed/rate keyword | **Finance** |
+| `Pop-Culture`, `Art`, `Coronavirus` | **Culture** |
+| temperature/weather/celsius keyword in title | **Weather** |
+| AI/tech/SpaceX keyword in title | **Tech** |
+| Musk/tweet keyword in title | **Musk/Tweets** |
+| No match | **Other** |
+
+**Priority**: Use Gamma `category` field first. If it's missing or too generic (`All`), fall back to tag labels. If still unclear, infer from market title keywords.
+
+**Optimization**: Collect all unique `eventSlug` values from positions first, then batch fetch from Gamma (avoid one API call per position). Group by slug to avoid duplicates.
+
+Compute the percentage distribution by volume invested.
 
 ### Step 5: Top Trades
 
