@@ -327,7 +327,7 @@ Output the complete profile in this format:
 
 - **PnL from lb-api is the ground truth**. Use it as the primary source. Position-level `cashPnl` may differ due to SPLIT/MERGE accounting.
 - **Activity pagination**: use `end` timestamp, never `offset`. Do NOT deduplicate — same txHash with multiple records means multiple fills in one transaction.
-- **Start with 500 activity records**. Only fetch more if the user asks for full history.
+- **Always paginate ALL activity records**. Partial data produces inaccurate profiles. Show pagination progress to the user (e.g. "Fetching activity... page 5, 2500 records so far").
 - **Category mapping**: use `eventSlug` from positions to query Gamma API. Category comes from the event's `tags` or `category` field. If Gamma is slow, infer from market title keywords (BTC/ETH/crypto → Crypto, Trump/election → Politics, NBA/FIFA → Sports, temperature/weather → Weather).
 - **All monetary values in USD**, round to 2 decimal places.
 - **Address format**: APIs accept both checksummed and lowercase. Normalize to lowercase.
