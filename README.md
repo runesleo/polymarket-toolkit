@@ -60,7 +60,7 @@ Just paste the content of `skills/polymarket-profile/SKILL.md` into your convers
 - Internet access to Polymarket APIs (some endpoints may need a proxy in certain regions)
 - That's it. No API keys, no database, no dependencies.
 
-New to Polymarket? [Create an account here](https://polymarket.com/?via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
+New to Polymarket? [Create an account here](https://polymarket.com/signup?via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
 
 ### Supported input
 
