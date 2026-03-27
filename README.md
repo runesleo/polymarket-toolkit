@@ -93,12 +93,12 @@ All public, no authentication required:
 ## Roadmap
 
 **Analysis Tools**
-- [ ] PnL Calculator — Precise per-trade PnL with MERGE/SPLIT/REDEEM handling
+- [ ] PnL Calculator — Position-level PnL breakdown with settlement tracking
 - [ ] Brier Score Rating — Prediction quality scoring per address
 - [ ] Trading Style Tags — Conservative / Aggressive / Event-driven / Market Maker labels
 
 **Market Intelligence**
-- [ ] Market Scanner — Discover markets by category, volume, spread, or pricing inefficiency
+- [ ] Market Scanner — Discover markets by category, volume, spread, or liquidity
 - [ ] Market Liquidity Gauge — Spread, depth, and maker concentration analysis
 - [ ] LP Reward Scanner — Find active liquidity incentive programs and estimate APY
 
