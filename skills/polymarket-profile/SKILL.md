@@ -19,9 +19,9 @@ The skill requires a **0x proxy wallet address**. Users may provide:
 
 | Input Type | Example | How to handle |
 |-----------|---------|---------------|
-| **0x address** | `0x13e1f69d...` | Use directly |
-| **Profile URL** | `polymarket.com/profile/runes-leo` | Extract username from URL, then resolve via leaderboard lookup (see below) |
-| **Username** | `runes-leo` | Resolve via leaderboard lookup (see below) |
+| **0x address** | `0x63ce3421...` | Use directly |
+| **Profile URL** | `polymarket.com/profile/Theo4` | Extract username from URL, then resolve via leaderboard lookup (see below) |
+| **Username** | `Theo4` | Resolve via leaderboard lookup (see below) |
 
 ### When user provides a username or URL (not 0x address)
 

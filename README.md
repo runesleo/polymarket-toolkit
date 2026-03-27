@@ -65,8 +65,8 @@ Just paste the content of `skills/polymarket-profile/SKILL.md` into your convers
 | Input | Example | Resolution |
 |-------|---------|------------|
 | 0x address | `0x63ce342161250d705dc0b16df89036c8e5f9ba9a` | Direct |
-| Profile URL | `polymarket.com/profile/runes-leo` | Auto-resolve via leaderboard |
-| Username | `runes-leo` | Auto-resolve via leaderboard |
+| Profile URL | `polymarket.com/profile/Theo4` | Auto-resolve via leaderboard |
+| Username | `Theo4` | Auto-resolve via leaderboard |
 
 Username lookup works for all leaderboard-ranked users (auto-resolved via `lb-api`). Unranked accounts (zero trading history) require the 0x address directly.
 
@@ -102,4 +102,3 @@ All public, no authentication required:
 AI × Crypto independent builder. Trading prediction markets with AI-powered strategies.
 
 - [leolabs.me](https://leolabs.me) — Open-source tools & research
-- [Polymarket](https://poly.market/runes-leo) — Live trading profile
