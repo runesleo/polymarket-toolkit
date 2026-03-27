@@ -20,19 +20,32 @@ The skill requires a **0x proxy wallet address**. Users may provide:
 | Input Type | Example | How to handle |
 |-----------|---------|---------------|
 | **0x address** | `0x13e1f69d...` | Use directly |
-| **Profile URL** | `polymarket.com/profile/runes-leo` | Ask user for the 0x address (see below) |
-| **Username** | `runes-leo` | Ask user for the 0x address (see below) |
+| **Profile URL** | `polymarket.com/profile/runes-leo` | Extract username from URL, then resolve via leaderboard lookup (see below) |
+| **Username** | `runes-leo` | Resolve via leaderboard lookup (see below) |
 
 ### When user provides a username or URL (not 0x address)
 
-There is no public API to resolve usernames to addresses. Guide the user:
+**Step 1: Try leaderboard lookup** — Search `lb-api.polymarket.com/profit` to resolve username → address.
 
-> "I need the wallet address to run the profile. You can find it by:
+```bash
+# Paginate through the leaderboard searching for the username
+# Start with offset=0, increment by 500 until found or no more results
+curl -s "https://lb-api.polymarket.com/profit?window=all&limit=500&offset=0"
+```
+
+Response is an array of objects with `name`, `pseudonym`, and `proxyWallet` fields. Search for a case-insensitive match on `name` or `pseudonym`.
+
+- **Found** → use the `proxyWallet` as the 0x address, continue to Step 1 of execution
+- **Not found after 3 pages (1500 users)** → the account is likely unranked, fall back to Step 2
+
+**Step 2: Manual fallback** (only if leaderboard lookup fails)
+
+> "This username isn't in the Polymarket leaderboard (only ranked users can be auto-resolved). You can find the 0x address by:
 > 1. Open the profile page on Polymarket
 > 2. Click the address/wallet icon near the username — it copies the 0x address
 > 3. Or check the browser URL — some profile pages show the address"
 
-NOTE: lb-api `profit` endpoint returns a leaderboard with `name` and `proxyWallet` fields, but only the top ~50 accounts. If the target user is in the top 50, you can match by name. For all others, the 0x address is required.
+NOTE: Leaderboard lookup covers all users with a PnL ranking (tens of thousands). Only very new or inactive accounts with zero trading history won't be found.
 
 ## API Endpoints
 

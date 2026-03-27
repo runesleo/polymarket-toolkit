@@ -62,12 +62,13 @@ Just paste the content of `skills/polymarket-profile/SKILL.md` into your convers
 
 ### Supported input
 
-| Input | Example |
-|-------|---------|
-| 0x address | `0x63ce342161250d705dc0b16df89036c8e5f9ba9a` |
-| Profile URL | `polymarket.com/profile/0x8dxd` (extract address from page) |
+| Input | Example | Resolution |
+|-------|---------|------------|
+| 0x address | `0x63ce342161250d705dc0b16df89036c8e5f9ba9a` | Direct |
+| Profile URL | `polymarket.com/profile/runes-leo` | Auto-resolve via leaderboard |
+| Username | `runes-leo` | Auto-resolve via leaderboard |
 
-Username lookup is not yet supported (no public API). Your AI will guide you to find the 0x address.
+Username lookup works for all leaderboard-ranked users (auto-resolved via `lb-api`). Unranked accounts (zero trading history) require the 0x address directly.
 
 ### Data sources
 
@@ -81,7 +82,7 @@ All public, no authentication required:
 
 ### Known limitations (v0.1)
 
-- Username → address auto-resolution not yet supported
+- Username → address auto-resolution works for leaderboard-ranked users only (unranked accounts need 0x address)
 - Category mapping uses Gamma API tags + keyword fallback (not 100% accurate)
 - Top Wins/Losses uses position-level cashPnl (approximate, not per-trade)
 - Large accounts (10K+ trades) may take 30+ seconds to paginate
