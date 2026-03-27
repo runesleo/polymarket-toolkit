@@ -60,6 +60,8 @@ Just paste the content of `skills/polymarket-profile/SKILL.md` into your convers
 - Internet access to Polymarket APIs (some endpoints may need a proxy in certain regions)
 - That's it. No API keys, no database, no dependencies.
 
+New to Polymarket? [Create an account here](https://polymarket.com/?via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
+
 ### Supported input
 
 | Input | Example | Resolution |
@@ -90,10 +92,22 @@ All public, no authentication required:
 
 ## Roadmap
 
-- [ ] PnL Calculator — Precise per-trade PnL with MERGE/SPLIT handling
-- [ ] Market Liquidity Gauge — Spread, depth, maker concentration analysis
-- [ ] Brier Score Rating — Address prediction quality scoring
-- [ ] Trading Style Tags — Conservative / Aggressive / Event-driven labels
+**Analysis Tools**
+- [ ] PnL Calculator — Precise per-trade PnL with MERGE/SPLIT/REDEEM handling
+- [ ] Brier Score Rating — Prediction quality scoring per address
+- [ ] Trading Style Tags — Conservative / Aggressive / Event-driven / Market Maker labels
+
+**Market Intelligence**
+- [ ] Market Scanner — Discover markets by category, volume, spread, or pricing inefficiency
+- [ ] Market Liquidity Gauge — Spread, depth, and maker concentration analysis
+- [ ] LP Reward Scanner — Find active liquidity incentive programs and estimate APY
+
+**Tracking & Alerts**
+- [ ] Leaderboard Tracker — Daily snapshots, rank changes, streak detection
+- [ ] Whale Alert — Large position changes from top traders
+
+**API** (planned)
+- [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps
 
 ## Author
 
