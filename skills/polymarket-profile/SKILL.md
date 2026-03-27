@@ -124,6 +124,16 @@ Win Rate = Won / (Won + Lost)
 
 IMPORTANT: Do NOT use `cashPnl > 0` to determine wins. Winning positions have `currentValue > 0` (shares worth $1) even if `cashPnl` appears negative due to partial sells. The `redeemable` flag is the definitive settlement indicator.
 
+#### Fallback: When Positions Are Empty or Incomplete
+
+For inactive accounts, the positions API may return very few records (settled positions get cleaned up). If `Won + Lost < 3`, fall back to activity-based estimation:
+
+1. From activity, group all REDEEM records by `slug` (market)
+2. From activity, group all TRADE records by `slug`
+3. Markets with REDEEM volume > 0 → **Won**
+4. Markets with TRADE volume > 0 but no REDEEM → **Lost** (invested but no payout)
+5. Label Win Rate as "estimated from activity" when using this fallback
+
 ### Step 3: Activity History
 
 ```bash
@@ -151,8 +161,7 @@ Classify by `type` field:
 
 | Type | What it means |
 |------|--------------|
-| BUY | Bought shares on the market |
-| SELL | Sold shares on the market |
+| TRADE | Bought or sold shares (check `side` field: "BUY" or "SELL") |
 | SPLIT | Created YES+NO pairs from USDC (market-neutral entry) |
 | MERGE | Combined YES+NO back to USDC (exit / arbitrage capture) |
 | REDEEM | Claimed winnings after market settlement |
@@ -189,6 +198,8 @@ Gamma API categories are legacy naming. Map to Polymarket's frontend categories:
 | No match | **Other** |
 
 **Priority**: Use Gamma `category` field first. If it's missing or too generic (`All`), fall back to tag labels. If still unclear, infer from market title keywords.
+
+**NOTE**: Gamma API may return empty `[]` for old/settled markets. This is expected — fall back to keyword inference from market titles in activity data.
 
 **Optimization**: Collect all unique `eventSlug` values from positions first, then batch fetch from Gamma (avoid one API call per position). Group by slug to avoid duplicates.
 
@@ -247,6 +258,14 @@ For each: market title, outcome (Yes/No), entry price (`avgPrice`), PnL amount.
 
 NOTE: `cashPnl` from positions is approximate (affected by partial sells). This is acceptable for v0.1. Do NOT attempt to match individual BUY→SELL/REDEEM from activity — that requires complex logic and is not worth the accuracy gain for a profile overview.
 
+#### Fallback: When Positions Data Is Sparse
+
+If positions API returns very few settled records, estimate Top Trades from activity:
+1. Group TRADE records by `slug`, sum `usdcSize` per market (= total invested)
+2. Group REDEEM records by `slug`, sum `usdcSize` per market (= total payout)
+3. PnL per market ≈ REDEEM volume - TRADE BUY volume
+4. Sort by PnL for top wins/losses. Label as "estimated from activity".
+
 ### Step 7: Assemble Profile
 
 Output the complete profile in this format:
@@ -280,13 +299,13 @@ Output the complete profile in this format:
   ...
 
 📋 Activity Summary
-  | Type   | Count | Volume |
-  |--------|-------|--------|
-  | BUY    | xxx   | $xxx   |
-  | SELL   | xxx   | $xxx   |
-  | SPLIT  | xxx   | $xxx   |
-  | MERGE  | xxx   | $xxx   |
-  | REDEEM | xxx   | $xxx   |
+  | Type       | Count | Volume |
+  |------------|-------|--------|
+  | TRADE BUY  | xxx   | $xxx   |
+  | TRADE SELL | xxx   | $xxx   |
+  | SPLIT      | xxx   | $xxx   |
+  | MERGE      | xxx   | $xxx   |
+  | REDEEM     | xxx   | $xxx   |
 
 🏆 Top Wins
   1. {market} — {direction} +${pnl} (entry ${price} → ${exit})
@@ -313,4 +332,5 @@ Output the complete profile in this format:
 - **All monetary values in USD**, round to 2 decimal places.
 - **Address format**: APIs accept both checksummed and lowercase. Normalize to lowercase.
 - **lb-api may require proxy** in some regions. data-api and gamma-api work globally.
-- **Rate limits**: No documented limits, but keep requests reasonable (<10 concurrent). Add 200ms delay between sequential calls if fetching many pages.
+- **Rate limits**: No documented limits, but keep requests reasonable (<10 concurrent). Add **500ms delay** between sequential pagination calls. If a request returns empty or non-JSON, retry once after 2 seconds.
+- **lb-api 7d/30d**: May return empty array `[]` for inactive accounts. Display as "N/A" instead of $0.
