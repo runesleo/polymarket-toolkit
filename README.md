@@ -2,22 +2,6 @@
 
 AI-powered tools for Polymarket prediction market analysis. Built for AI agents — works with Claude Code, OpenClaw, Cursor, or any LLM that can run shell commands.
 
-**58 ⭐ · 9 forks** — 4 days since launch
-
-## What's New in v0.2
-
-- **New Skill: `polymarket-leaderboard`** — Scan any leaderboard window (7d/30d/all), batch-profile the top N traders, output a comparison table with PnL, win rate, market count, and auto-detected strategy pattern. One command, full picture.
-- Pairs with `polymarket-profile` — scan first to find interesting traders, then deep-dive any address.
-
-## Skills
-
-| Skill | What it does |
-|-------|-------------|
-| `polymarket-profile` | Deep profile any address — PnL, win rate, positions, categories, strategy detection |
-| `polymarket-leaderboard` | **NEW** — Batch scan top traders, compare strategies side by side |
-
----
-
 ## polymarket-profile
 
 Turn any Polymarket address into a complete trading profile.
@@ -98,54 +82,13 @@ All public, no authentication required:
 | `data-api.polymarket.com` | Positions, activity history |
 | `gamma-api.polymarket.com` | Market metadata, categories, tags |
 
-### Known limitations (v0.2)
+### Known limitations (v0.1)
 
 - Username → address auto-resolution works for leaderboard-ranked users only (unranked accounts need 0x address)
 - Category mapping uses Gamma API tags + keyword fallback (not 100% accurate)
 - Top Wins/Losses uses position-level cashPnl (approximate, not per-trade)
 - Large accounts (10K+ trades) may take 30+ seconds to paginate
 - lb-api 7d/30d PnL may return empty for inactive accounts
-
----
-
-## polymarket-leaderboard
-
-Batch-scan any Polymarket leaderboard. See who's on top and how they're making money — in one command.
-
-### Example
-
-```
-You: Scan top 5 traders this week
-
-AI: Fetching 7d leaderboard...
-
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    Polymarket Leaderboard: Top 5 (7d)
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  | # | Name       | PnL      | Win Rate  | Markets | Strategy      |
-  |---|------------|----------|-----------|---------|---------------|
-  | 1 | Theo4      | +$142k   | 81% (29/36)| 36     | Concentrated  |
-  | 2 | dxdcap     | +$89k    | 67% (8/12) | 12     | SPLIT Arb     |
-  | 3 | kingfisher | +$77k    | 74% (51/69)| 69     | Diversified   |
-  ...
-
-  🔍 Deep dive: "Profile Theo4" for full analysis
-```
-
-### Setup
-
-```bash
-# Claude Code
-cp -R skills/polymarket-leaderboard ~/.claude/skills/
-
-# OpenClaw
-cp -R skills/polymarket-leaderboard ~/.openclaw/skills/
-```
-
-After installation: "Scan top 10 traders this month" or "Who's making money in crypto markets this week?"
-
----
 
 ## Roadmap
 
