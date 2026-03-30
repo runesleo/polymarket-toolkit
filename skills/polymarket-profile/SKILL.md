@@ -2,7 +2,7 @@
 name: polymarket-profile
 description: Polymarket address profiler — input any 0x address, get a complete trading profile with PnL, win rate, positions, category breakdown, and top trades. All data from public APIs, no local database needed.
 allowed-tools: Bash(curl:*) Bash(node:*) Read Write Edit
-metadata: {"version":"0.1.0","openclaw":{"skillKey":"polymarket-profile","homepage":"https://leolabs.me","requires":{"anyBins":["curl","node"]}}}
+metadata: {"version":"0.2.0","openclaw":{"skillKey":"polymarket-profile","homepage":"https://leolabs.me","requires":{"anyBins":["curl","node"]}}}
 ---
 
 # Polymarket Address Profile
