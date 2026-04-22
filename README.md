@@ -252,11 +252,12 @@ New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball)
 **API** (planned)
 - [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps
 
-## Author
+## About the author
 
-**Leo** ([@runes_leo](https://x.com/runes_leo))
+*Leo ([@runes_leo](https://x.com/runes_leo)) — AI × Crypto independent builder. Trading on [Polymarket](https://polymarket.com/?r=githuball), building data and trading systems with Claude Code and Codex.*
 
-AI × Crypto independent builder. Trading prediction markets with AI-powered strategies.
+*[leolabs.me](https://leolabs.me) — writing · community · open-source tools · indie projects · all platforms.*
 
-- [leolabs.me](https://leolabs.me) — Open-source tools & research
-- [Try Polymarket](https://polymarket.com/?r=githuball)
+*[X Subscription](https://x.com/runes_leo/creator-subscriptions/subscribe) — paid content weekly, or just buy me a coffee 😁*
+
+*Learn in public, Build in public.*
