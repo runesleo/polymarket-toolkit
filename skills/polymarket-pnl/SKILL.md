@@ -119,7 +119,7 @@ cp -R skills/polymarket-pnl ~/.openclaw/skills/
 pip install httpx
 ```
 
-New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball).
+New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
 
 ## License
 

@@ -76,7 +76,7 @@ Just paste the content of `skills/polymarket-profile/SKILL.md` into your convers
 - Internet access to Polymarket APIs (some endpoints may need a proxy in certain regions)
 - That's it. No API keys, no database, no dependencies.
 
-New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball).
+New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
 
 ### Supported input
 
@@ -158,7 +158,7 @@ cp -R skills/polymarket-brier ~/.openclaw/skills/
 
 After installation: "What's the Brier Score for 0x63ce..." or "How accurate is Theo4's predictions?"
 
-New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball).
+New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
 
 ---
 
@@ -229,7 +229,7 @@ Output is JSONL with one record per address. See `skills/polymarket-pnl/SKILL.md
 - **`polymarket-profile`** — curl-only, qualitative profile (win rate, positions, categories). Best for "who is this address?"
 - **`polymarket-pnl`** — Python + audit-grade cashflow reconstruction. Best for "what is their real PnL?" — writing research, benchmarking a model, or building a dataset.
 
-New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball).
+New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit).
 
 ---
 
@@ -254,7 +254,7 @@ New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball)
 
 ## About the author
 
-*Leo ([@runes_leo](https://x.com/runes_leo)) — AI × Crypto independent builder. Trading on [Polymarket](https://polymarket.com/?r=githuball), building data and trading systems with Claude Code and Codex.*
+*Leo ([@runes_leo](https://x.com/runes_leo)) — AI × Crypto independent builder. Trading on [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit), building data and trading systems with Claude Code and Codex.*
 
 *[leolabs.me](https://leolabs.me) — writing · community · open-source tools · indie projects · all platforms.*
 
