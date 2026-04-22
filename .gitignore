@@ -3,3 +3,14 @@ node_modules/
 .env.local
 *.log
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# polymarket-pnl runtime artifacts
+checkpoints/
+precise_pnl.jsonl
