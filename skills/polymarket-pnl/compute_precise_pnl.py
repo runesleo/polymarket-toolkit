@@ -237,7 +237,7 @@ def fetch_activity_all_timestamp(
 
         # Exclusive cursor avoids boundary duplication but means we may miss
         # additional same-second rows if the page filled exactly at the boundary.
-        if len(records) == PAGE_LIMIT and oldest_count > 1:
+        if len(records) == PAGE_LIMIT and oldest_count > 0:
             exact_second_records = fetch_exact_second(oldest)
             if exact_second_records is None:
                 print(
@@ -342,7 +342,7 @@ def compute_trade_cashflow_with_checkpoint(
         oldest = min(r["timestamp"] for r in records)
         oldest_count = sum(1 for r in records if r["timestamp"] == oldest)
 
-        if len(records) == PAGE_LIMIT and oldest_count > 1:
+        if len(records) == PAGE_LIMIT and oldest_count > 0:
             exact_params = {
                 "user": address,
                 "type": "TRADE",
