@@ -8,6 +8,19 @@ AI-powered tools for Polymarket prediction market analysis. Built for AI agents 
 
 Most profilers (including `polymarket-profile`) use position-level `cashPnL` which is an approximation. `polymarket-pnl` replays every BUY / SELL / REDEEM / MERGE / SPLIT / REBATE event and reconciles against current unrealized position value. Validated against Polymarket's official `/profit` endpoint on the public leaderboard: **MAPE ~0.2%**, all top accounts within 1% error. Use this when the number has to hold up to scrutiny.
 
+## TypeScript quickstart (public APIs)
+
+Small, **zero-dependency** helpers for Polymarket’s public **Gamma**, **Data**, **LB**, and **CLOB** endpoints live in [`src/index.ts`](./src/index.ts). Run any demo with **Node 18+**:
+
+```bash
+npx tsx examples/01-fetch-gamma-markets.ts
+# Zero extra installs on Node 22+:
+node --experimental-strip-types examples/01-fetch-gamma-markets.ts
+```
+
+- **Examples index:** [`examples/`](./examples/) — one numbered script per exported helper (each file stays short and self-contained).
+- **Bilingual recipes:** [`docs/cookbook.md`](./docs/cookbook.md) — ten common tasks (English first, Chinese rewrite) with copy-paste snippets and sample output.
+
 ## Skills
 
 | Skill | What it does |
