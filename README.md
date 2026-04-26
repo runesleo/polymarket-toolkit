@@ -2,6 +2,15 @@
 
 AI-powered tools for Polymarket prediction market analysis. Built for AI agents — works with Claude Code, OpenClaw, Cursor, or any LLM that can run shell commands.
 
+<<<<<<< Updated upstream
+=======
+**简体中文：** [README.zh-CN.md](./README.zh-CN.md)
+
+## Examples
+
+The [`examples/`](./examples/) directory has **10+** read-only shell/Python snippets: multi-market Gamma comparison, CLOB depth polling, leaderboard vs positions checks, and invoking `polymarket-pnl` for audit-grade PnL. They use public HTTPS only and add no new dependencies.
+
+>>>>>>> Stashed changes
 ## What's New in v0.3
 
 **New Skill: `polymarket-pnl`** — Audit-grade PnL via Data API cashflow reconstruction.
