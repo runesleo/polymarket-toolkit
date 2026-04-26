@@ -32,6 +32,7 @@ import ssl
 import statistics
 import sys
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -175,7 +176,6 @@ def fetch_activity_all_timestamp(
         """
         exact_items: list[dict] = []
         offset = 0
-        seen_pages: set[str] = set()
         while True:
             params = {
                 "user": address,
@@ -193,10 +193,6 @@ def fetch_activity_all_timestamp(
             # Treat mixed timestamps as unsupported instead of corrupting pagination.
             if any(r.get("timestamp") != ts for r in records):
                 return None
-            page_signature = json.dumps(records, sort_keys=True, separators=(",", ":"))
-            if page_signature in seen_pages:
-                return None
-            seen_pages.add(page_signature)
             exact_items.extend(records)
             if len(records) < PAGE_LIMIT:
                 return exact_items
@@ -251,16 +247,17 @@ def fetch_activity_all_timestamp(
                     f"  ⚠️ {activity_type} page boundary at ts={oldest} had {len(exact_second_records)} rows; "
                     f"backfilling {missing_count} same-second records"
                 , flush=True)
-                seen_boundary = {
+                seen_boundary = Counter(
                     json.dumps(row, sort_keys=True, separators=(",", ":"))
                     for row in records
                     if row["timestamp"] == oldest
-                }
+                )
                 for row in exact_second_records:
                     if row["timestamp"] != oldest:
                         continue
                     row_key = json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    if row_key in seen_boundary:
+                    if seen_boundary[row_key] > 0:
+                        seen_boundary[row_key] -= 1
                         continue
                     items.append(row)
             elif len(exact_second_records) < oldest_count:
@@ -299,6 +296,32 @@ def compute_trade_cashflow_with_checkpoint(
     page = int(state.get("page", 0) or 0)
     end = state.get("next_end")
     pagination_incomplete = bool(state.get("pagination_incomplete", False))
+
+    def fetch_exact_second(ts: int) -> list[dict] | None:
+        exact_items: list[dict] = []
+        offset = 0
+        while True:
+            exact_params = {
+                "user": address,
+                "type": "TRADE",
+                "limit": PAGE_LIMIT,
+                "start": ts,
+                "end": ts,
+                "offset": offset,
+            }
+            exact_resp = _fetch_with_retry(client, ACTIVITY_API, exact_params)
+            exact_records = exact_resp.json()
+            if not exact_records:
+                return exact_items if exact_items else None
+            if any(r.get("timestamp") != ts for r in exact_records):
+                return None
+            exact_items.extend(exact_records)
+            if len(exact_records) < PAGE_LIMIT:
+                return exact_items
+            offset += len(exact_records)
+            if offset > ACTIVITY_OFFSET_CAP:
+                return None
+            time.sleep(REQUEST_DELAY)
 
     if checkpoint is not None and (state.get("address") != address or state.get("activity_type") != "TRADE"):
         total_buy = total_sell = 0.0
@@ -343,26 +366,18 @@ def compute_trade_cashflow_with_checkpoint(
         oldest_count = sum(1 for r in records if r["timestamp"] == oldest)
 
         if len(records) == PAGE_LIMIT and oldest_count > 0:
-            exact_params = {
-                "user": address,
-                "type": "TRADE",
-                "limit": PAGE_LIMIT,
-                "start": oldest,
-                "end": oldest,
-                "offset": 0,
-            }
-            exact_resp = _fetch_with_retry(client, ACTIVITY_API, exact_params)
-            exact_records = exact_resp.json()
-            if exact_records and all(r.get("timestamp") == oldest for r in exact_records):
-                seen_boundary = {
+            exact_records = fetch_exact_second(oldest)
+            if exact_records is not None:
+                seen_boundary = Counter(
                     json.dumps(row, sort_keys=True, separators=(",", ":"))
                     for row in records
                     if row["timestamp"] == oldest
-                }
+                )
                 missing_rows = []
                 for row in exact_records:
                     row_key = json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    if row_key in seen_boundary:
+                    if seen_boundary[row_key] > 0:
+                        seen_boundary[row_key] -= 1
                         continue
                     missing_rows.append(row)
                 if missing_rows:
