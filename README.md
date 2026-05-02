@@ -6,7 +6,7 @@ AI-powered tools for Polymarket prediction market analysis. Built for AI agents 
 
 **New public helper: redeem watchdog** — inspect redeemable positions without private keys.
 
-After Polymarket's pUSD-era redemption flow, most users should rely on the official app for normal redemption. Agents still need a status lane: which wallet has redeemable value, which condition is stuck, and whether a low-cash strategy account needs attention. v0.4 adds `fetchRedeemablePositionsPage`, `summarizeRedeemablePositions`, and `resolveRedeemMode` for that exact workflow. It never signs or sends transactions.
+Polymarket's pUSD-era redemption flow handles normal user redemption inside the official app. This release does **not** replace or work around that flow. It adds a read-only status lane for agents and dashboards: which wallet still has rows surfaced as `redeemable=true` by the public Data API, what their `currentValue` is (winning rows pay out, losing rows pay $0), and whether a strategy account is below a configured cash watermark. v0.4 adds `fetchRedeemablePositionsPage`, `summarizeRedeemablePositions`, and `resolveRedeemMode` for that workflow. It never signs or sends transactions.
 
 ```ts
 import {
@@ -55,8 +55,8 @@ Inspect redeemable positions for a public proxy wallet without touching keys, al
 ### What you get
 
 - **Redeemable scan** — `fetchRedeemablePositionsPage(user)` calls Data API `/positions?redeemable=true`
-- **Condition rollup** — `summarizeRedeemablePositions(rows)` groups by condition id and estimates redeemable value
-- **Policy label** — `resolveRedeemMode({ lowWatermark })` returns `watchdog`, `low_watermark`, or `active` for agent reports
+- **Condition rollup** — `summarizeRedeemablePositions(rows)` groups rows by `conditionId` and sums `currentValue` (losing rows contribute `$0`, which is the correct payable amount — not their `size`)
+- **Policy label** — `resolveRedeemMode({ lowWatermark })` returns `"watchdog"` or `"low_watermark"`. There is intentionally no `"active"` value: this toolkit never executes a redeem, so an active label belongs in your own wallet system, not here.
 
 ### Example
 
@@ -67,18 +67,20 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 ```json
 {
   "mode": "low_watermark",
-  "redeemableCount": 2,
-  "conditionCount": 1,
-  "estimatedRedeemableValue": 10,
+  "redeemableCount": 3,
+  "conditionCount": 3,
+  "estimatedRedeemableValue": 0,
   "topConditions": [
-    { "conditionId": "0x...", "slug": "some-market", "count": 2, "estimatedValue": 10 }
+    { "conditionId": "0x...", "slug": "btc-updown-5m-1771773600", "count": 1, "estimatedCurrentValue": 0 }
   ]
 }
 ```
 
+> Three rows surfaced as `redeemable=true` but every `currentValue` is `0` — they are losing tokens that redeem to `$0`. The Data API still surfaces them after resolution; the helper reports them honestly without inflating payable value.
+
 ### Safety boundary
 
-This toolkit only reads public APIs. It does not redeem tokens, sign Safe transactions, call relayers, move funds, or require private keys. Treat it as a dashboard/agent primitive; execution belongs in your own production wallet system.
+This toolkit only reads public APIs. It does not redeem tokens, sign Safe transactions, call relayers, move funds, or require private keys. The official Polymarket app remains the right place for normal user redemption. Treat this helper as a dashboard/agent primitive; execution stays in your own wallet system.
 
 ---
 

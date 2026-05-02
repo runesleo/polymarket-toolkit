@@ -111,7 +111,13 @@ export async function fetchPositionsPage(
   return pmGetJson<unknown[]>(u);
 }
 
-export type RedeemMode = "watchdog" | "low_watermark" | "active";
+/**
+ * Policy label for an upstream agent/dashboard. This toolkit never executes
+ * an active redeem; the label is a status hint for the caller's own wallet
+ * system. Intentionally only two values — anything else is collapsed by
+ * `resolveRedeemMode`.
+ */
+export type RedeemMode = "watchdog" | "low_watermark";
 
 export type RedeemablePositionLike = {
   redeemable?: boolean;
@@ -119,20 +125,26 @@ export type RedeemablePositionLike = {
   slug?: string;
   eventSlug?: string;
   title?: string;
-  currentValue?: number | string;
-  size?: number | string;
+  currentValue?: number | string | null;
+  size?: number | string | null;
 };
 
 export type RedeemableConditionSummary = {
   conditionId: string;
   slug: string;
   count: number;
-  estimatedValue: number;
+  /**
+   * Sum of Data API `currentValue` for this condition. For losing redeemable
+   * rows this is 0 — that is the correct payable amount, not a missing value.
+   * Falls back to `size` only when `currentValue` is null/undefined.
+   */
+  estimatedCurrentValue: number;
 };
 
 export type RedeemablePositionsSummary = {
   redeemableCount: number;
   conditionCount: number;
+  /** Sum of `estimatedCurrentValue` across all redeemable rows. Losing rows contribute 0. */
   estimatedRedeemableValue: number;
   topConditions: RedeemableConditionSummary[];
 };
@@ -141,7 +153,7 @@ function round6(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-function numeric(value: number | string | undefined): number {
+function numeric(value: number | string | null | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
@@ -170,37 +182,46 @@ export function summarizeRedeemablePositions(
     if (position.redeemable !== true) continue;
     const conditionId = position.conditionId || "unknown";
     const slug = position.slug || position.eventSlug || position.title || conditionId;
-    const estimatedValue = numeric(position.currentValue) || numeric(position.size);
+    // currentValue is the Data API's payable amount (0 for losing redeemable
+    // rows). Only fall back to size when the field is missing entirely.
+    const estimatedCurrentValue =
+      position.currentValue == null ? numeric(position.size) : numeric(position.currentValue);
     const row = byCondition.get(conditionId) ?? {
       conditionId,
       slug,
       count: 0,
-      estimatedValue: 0,
+      estimatedCurrentValue: 0,
     };
     row.count += 1;
-    row.estimatedValue += estimatedValue;
+    row.estimatedCurrentValue += estimatedCurrentValue;
     byCondition.set(conditionId, row);
   }
 
   const topConditions = [...byCondition.values()]
-    .map((row) => ({ ...row, estimatedValue: round6(row.estimatedValue) }))
-    .sort((a, b) => b.estimatedValue - a.estimatedValue);
+    .map((row) => ({ ...row, estimatedCurrentValue: round6(row.estimatedCurrentValue) }))
+    .sort((a, b) => b.estimatedCurrentValue - a.estimatedCurrentValue);
 
   return {
     redeemableCount: topConditions.reduce((total, row) => total + row.count, 0),
     conditionCount: topConditions.length,
-    estimatedRedeemableValue: round6(topConditions.reduce((total, row) => total + row.estimatedValue, 0)),
+    estimatedRedeemableValue: round6(
+      topConditions.reduce((total, row) => total + row.estimatedCurrentValue, 0),
+    ),
     topConditions,
   };
 }
 
-/** Resolve the intended redeem policy for agent/tooling output. This helper never sends transactions. */
+/**
+ * Resolve a policy label for upstream agents. Returns only `"watchdog"` or
+ * `"low_watermark"` — this toolkit never executes redeems, so an `"active"`
+ * label is intentionally not exposed. If the caller's own wallet system runs
+ * an active redeem path, that label belongs in their layer, not here.
+ */
 export function resolveRedeemMode(options: {
   mode?: string;
   lowWatermark?: number;
 } = {}): RedeemMode {
   const mode = (options.mode ?? "").trim().toLowerCase().replace(/-/g, "_");
-  if (mode === "active" || mode === "auto" || mode === "always") return "active";
   if (mode === "low_watermark" || mode === "watermark" || mode === "on_demand") return "low_watermark";
   if (mode === "watchdog" || mode === "watch" || mode === "status" || mode === "dry_run") return "watchdog";
   return typeof options.lowWatermark === "number" && Number.isFinite(options.lowWatermark) && options.lowWatermark > 0
