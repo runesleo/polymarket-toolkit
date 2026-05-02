@@ -111,6 +111,103 @@ export async function fetchPositionsPage(
   return pmGetJson<unknown[]>(u);
 }
 
+export type RedeemMode = "watchdog" | "low_watermark" | "active";
+
+export type RedeemablePositionLike = {
+  redeemable?: boolean;
+  conditionId?: string;
+  slug?: string;
+  eventSlug?: string;
+  title?: string;
+  currentValue?: number | string;
+  size?: number | string;
+};
+
+export type RedeemableConditionSummary = {
+  conditionId: string;
+  slug: string;
+  count: number;
+  estimatedValue: number;
+};
+
+export type RedeemablePositionsSummary = {
+  redeemableCount: number;
+  conditionCount: number;
+  estimatedRedeemableValue: number;
+  topConditions: RedeemableConditionSummary[];
+};
+
+function round6(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function numeric(value: number | string | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Data API: one page of positions filtered to `redeemable=true`. Public, no wallet key required. */
+export async function fetchRedeemablePositionsPage(
+  user: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<unknown[]> {
+  const u = new URL(`${DATA_API_BASE}/positions`);
+  u.searchParams.set("user", user);
+  u.searchParams.set("redeemable", "true");
+  u.searchParams.set("sizeThreshold", "0");
+  u.searchParams.set("limit", String(options.limit ?? 100));
+  u.searchParams.set("offset", String(options.offset ?? 0));
+  return pmGetJson<unknown[]>(u);
+}
+
+/** Summarize redeemable Data API positions by condition, without signing or sending transactions. */
+export function summarizeRedeemablePositions(
+  positions: RedeemablePositionLike[],
+): RedeemablePositionsSummary {
+  const byCondition = new Map<string, RedeemableConditionSummary>();
+
+  for (const position of positions) {
+    if (position.redeemable !== true) continue;
+    const conditionId = position.conditionId || "unknown";
+    const slug = position.slug || position.eventSlug || position.title || conditionId;
+    const estimatedValue = numeric(position.currentValue) || numeric(position.size);
+    const row = byCondition.get(conditionId) ?? {
+      conditionId,
+      slug,
+      count: 0,
+      estimatedValue: 0,
+    };
+    row.count += 1;
+    row.estimatedValue += estimatedValue;
+    byCondition.set(conditionId, row);
+  }
+
+  const topConditions = [...byCondition.values()]
+    .map((row) => ({ ...row, estimatedValue: round6(row.estimatedValue) }))
+    .sort((a, b) => b.estimatedValue - a.estimatedValue);
+
+  return {
+    redeemableCount: topConditions.reduce((total, row) => total + row.count, 0),
+    conditionCount: topConditions.length,
+    estimatedRedeemableValue: round6(topConditions.reduce((total, row) => total + row.estimatedValue, 0)),
+    topConditions,
+  };
+}
+
+/** Resolve the intended redeem policy for agent/tooling output. This helper never sends transactions. */
+export function resolveRedeemMode(options: {
+  mode?: string;
+  lowWatermark?: number;
+} = {}): RedeemMode {
+  const mode = (options.mode ?? "").trim().toLowerCase().replace(/-/g, "_");
+  if (mode === "active" || mode === "auto" || mode === "always") return "active";
+  if (mode === "low_watermark" || mode === "watermark" || mode === "on_demand") return "low_watermark";
+  if (mode === "watchdog" || mode === "watch" || mode === "status" || mode === "dry_run") return "watchdog";
+  return typeof options.lowWatermark === "number" && Number.isFinite(options.lowWatermark) && options.lowWatermark > 0
+    ? "low_watermark"
+    : "watchdog";
+}
+
 /** Data API: one page of activity (optionally filtered by type / cursor `end`). */
 export async function fetchActivityPage(
   user: string,

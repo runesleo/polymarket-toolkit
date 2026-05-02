@@ -1,11 +1,15 @@
 {
   "name": "polymarket-toolkit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Polymarket public HTTP/WebSocket helpers plus agent skills (profile, Brier, PnL).",
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "npx -p typescript@latest tsc --noEmit"
   },
   "exports": {
     ".": "./src/index.ts"

@@ -2,6 +2,22 @@
 
 AI-powered tools for Polymarket prediction market analysis. Built for AI agents — works with Claude Code, OpenClaw, Cursor, or any LLM that can run shell commands.
 
+## What's New in v0.4
+
+**New public helper: redeem watchdog** — inspect redeemable positions without private keys.
+
+After Polymarket's pUSD-era redemption flow, most users should rely on the official app for normal redemption. Agents still need a status lane: which wallet has redeemable value, which condition is stuck, and whether a low-cash strategy account needs attention. v0.4 adds `fetchRedeemablePositionsPage`, `summarizeRedeemablePositions`, and `resolveRedeemMode` for that exact workflow. It never signs or sends transactions.
+
+```ts
+import {
+  fetchRedeemablePositionsPage,
+  summarizeRedeemablePositions,
+} from "./src/index.ts";
+
+const positions = await fetchRedeemablePositionsPage("0x...");
+console.log(summarizeRedeemablePositions(positions as never[]));
+```
+
 ## What's New in v0.3
 
 **New Skill: `polymarket-pnl`** — Audit-grade PnL via Data API cashflow reconstruction.
@@ -28,6 +44,41 @@ node --experimental-strip-types examples/01-fetch-gamma-markets.ts
 | `polymarket-profile` | Deep profile any address — PnL, win rate, positions, categories, strategy detection |
 | `polymarket-brier` | Prediction accuracy scoring, calibration analysis, forecast quality rating |
 | `polymarket-pnl` | **NEW** — Audit-grade PnL via cashflow reconstruction (~0.2% MAPE vs. official) |
+| Public TS helpers | **NEW in v0.4** — redeem watchdog, Gamma/Data/LB/CLOB helpers |
+
+---
+
+## Redeem Watchdog Helpers
+
+Inspect redeemable positions for a public proxy wallet without touching keys, allowances, relayers, or transactions.
+
+### What you get
+
+- **Redeemable scan** — `fetchRedeemablePositionsPage(user)` calls Data API `/positions?redeemable=true`
+- **Condition rollup** — `summarizeRedeemablePositions(rows)` groups by condition id and estimates redeemable value
+- **Policy label** — `resolveRedeemMode({ lowWatermark })` returns `watchdog`, `low_watermark`, or `active` for agent reports
+
+### Example
+
+```bash
+npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9a 25
+```
+
+```json
+{
+  "mode": "low_watermark",
+  "redeemableCount": 2,
+  "conditionCount": 1,
+  "estimatedRedeemableValue": 10,
+  "topConditions": [
+    { "conditionId": "0x...", "slug": "some-market", "count": 2, "estimatedValue": 10 }
+  ]
+}
+```
+
+### Safety boundary
+
+This toolkit only reads public APIs. It does not redeem tokens, sign Safe transactions, call relayers, move funds, or require private keys. Treat it as a dashboard/agent primitive; execution belongs in your own production wallet system.
 
 ---
 
@@ -261,6 +312,7 @@ New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&
 **Tracking & Alerts**
 - [ ] Leaderboard Tracker — Daily snapshots, rank changes, streak detection
 - [ ] Whale Alert — Large position changes from top traders
+- [x] Redeem Watchdog — public redeemable-position status for agent dashboards
 
 **API** (planned)
 - [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps

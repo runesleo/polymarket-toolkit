@@ -421,6 +421,60 @@ console.log(computeBrierScoreFromSettledPositions(positions as never[]));
 
 ---
 
+## 11) Watch redeemable positions without private keys
+
+**English**
+
+`fetchRedeemablePositionsPage` uses the public Data API and filters `redeemable=true`. Pair it with `summarizeRedeemablePositions` when an agent needs to know whether a wallet has claimable value after resolution. The helper does not sign transactions or redeem funds.
+
+```ts
+import {
+  fetchRedeemablePositionsPage,
+  resolveRedeemMode,
+  summarizeRedeemablePositions,
+} from "./src/index.ts";
+
+const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
+const rows = await fetchRedeemablePositionsPage(user, { limit: 100 });
+console.log({
+  mode: resolveRedeemMode({ lowWatermark: 25 }),
+  ...summarizeRedeemablePositions(rows as never[]),
+});
+```
+
+**Example output**
+
+```text
+{
+  mode: 'low_watermark',
+  redeemableCount: 2,
+  conditionCount: 1,
+  estimatedRedeemableValue: 10,
+  topConditions: [...]
+}
+```
+
+**中文（本地化）**
+
+官方 pUSD redeem 流程负责正常领取，agent 侧更需要一个「看板口径」：这个钱包有没有可 redeem 的 value，卡在哪个 condition，是否低于策略资金水位。这个 helper 只读公开 API，适合放进 dashboard、日报、agent 工作流。
+
+```ts
+import {
+  fetchRedeemablePositionsPage,
+  resolveRedeemMode,
+  summarizeRedeemablePositions,
+} from "./src/index.ts";
+
+const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
+const rows = await fetchRedeemablePositionsPage(user, { limit: 100 });
+console.log({
+  mode: resolveRedeemMode({ lowWatermark: 25 }),
+  ...summarizeRedeemablePositions(rows as never[]),
+});
+```
+
+---
+
 ## See also
 
 - [`examples/`](../examples/) — numbered demos (`npx tsx examples/01-fetch-gamma-markets.ts`, or `node --experimental-strip-types …` on Node 22+)
