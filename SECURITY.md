@@ -17,8 +17,8 @@ Please **do not** open a public issue for undisclosed security problems.
 
 Include:
 
-- A short description of the issue and its impact  
-- Steps to reproduce or proof of concept, if you can share them safely  
+- A short description of the issue and its impact
+- Steps to reproduce or proof of concept, if you can share them safely
 - Affected versions, components, or files (if known)
 
 We aim to acknowledge reports within a few business days and coordinate disclosure after a fix is ready.
