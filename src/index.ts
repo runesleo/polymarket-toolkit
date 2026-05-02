@@ -184,8 +184,11 @@ export function summarizeRedeemablePositions(
     const slug = position.slug || position.eventSlug || position.title || conditionId;
     // currentValue is the Data API's payable amount (0 for losing redeemable
     // rows). Only fall back to size when the field is missing entirely.
-    const estimatedCurrentValue =
+    // Clamp at 0 — payable value cannot be negative even if the API ever
+    // returns one (e.g. transient mark-to-market quirks).
+    const raw =
       position.currentValue == null ? numeric(position.size) : numeric(position.currentValue);
+    const estimatedCurrentValue = raw > 0 ? raw : 0;
     const row = byCondition.get(conditionId) ?? {
       conditionId,
       slug,
