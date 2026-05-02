@@ -421,6 +421,63 @@ console.log(computeBrierScoreFromSettledPositions(positions as never[]));
 
 ---
 
+## 11) Watch redeemable positions without private keys
+
+**English**
+
+`fetchRedeemablePositionsPage` reads the public Data API with `redeemable=true`. After Polymarket's pUSD-era redemption shipped, normal user redemption happens inside the official app. This helper is the read-only status lane for agents: it surfaces every row the Data API still flags as `redeemable=true`, including losing tokens whose `currentValue` is `0` (correct — they redeem to $0). `summarizeRedeemablePositions` groups by `conditionId` and sums `currentValue`, so losing rows contribute `0` rather than being inflated to their `size`. The helper does not sign transactions or redeem funds.
+
+```ts
+import {
+  fetchRedeemablePositionsPage,
+  resolveRedeemMode,
+  summarizeRedeemablePositions,
+} from "./src/index.ts";
+
+const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
+const rows = await fetchRedeemablePositionsPage(user, { limit: 100 });
+console.log({
+  mode: resolveRedeemMode({ lowWatermark: 25 }),
+  ...summarizeRedeemablePositions(rows as never[]),
+});
+```
+
+**Example output (losing rows surfaced honestly as $0)**
+
+```text
+{
+  mode: 'low_watermark',
+  redeemableCount: 3,
+  conditionCount: 3,
+  estimatedRedeemableValue: 0,
+  topConditions: [
+    { conditionId: '0x...', slug: 'btc-updown-5m-...', count: 1, estimatedCurrentValue: 0 },
+    ...
+  ]
+}
+```
+
+**中文（本地化）**
+
+官方 pUSD redeem 流程负责正常领取，agent 侧需要的是只读「看板口径」：这个钱包当下还有哪些行被 Data API 标成 `redeemable=true`、payable 价值（`currentValue`）多少、是否低于策略资金水位。注意 losing token redeem 拿 $0，所以 `currentValue=0` 是正确口径，helper 不会把 `size` 误当作 payable 拉高数字。只读公开 API，可直接接 dashboard、日报、agent 工作流。
+
+```ts
+import {
+  fetchRedeemablePositionsPage,
+  resolveRedeemMode,
+  summarizeRedeemablePositions,
+} from "./src/index.ts";
+
+const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
+const rows = await fetchRedeemablePositionsPage(user, { limit: 100 });
+console.log({
+  mode: resolveRedeemMode({ lowWatermark: 25 }),
+  ...summarizeRedeemablePositions(rows as never[]),
+});
+```
+
+---
+
 ## See also
 
 - [`examples/`](../examples/) — numbered demos (`npx tsx examples/01-fetch-gamma-markets.ts`, or `node --experimental-strip-types …` on Node 22+)
