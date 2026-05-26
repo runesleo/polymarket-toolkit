@@ -1,6 +1,6 @@
 # Polymarket Toolkit
 
-**面向会写代码的 builder** — 基于 Polymarket 公开 API 的 CLI、TypeScript 工具库与 AI Skills。无需 API Key，无需签名。
+**面向想自己查 Polymarket 数据的人** — 会写代码直接跑 CLI；不会写代码，把 Skills 装进 Claude / Cursor / OpenClaw，让 AI 帮你跑。基于公开 API，只读，无需 API Key，无需签名。
 
 [English README](./README.md)
 

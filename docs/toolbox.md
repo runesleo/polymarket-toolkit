@@ -1,6 +1,6 @@
 # Toolbox · Drawer Index
 
-**Audience:** builders who run code. No API keys. No signing.
+**Audience:** anyone researching Polymarket — run CLI yourself, or use AI skills (Claude / Cursor / OpenClaw). No API keys. No signing.
 
 ## Quick start (CLI)
 

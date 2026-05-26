@@ -1,6 +1,6 @@
 # Polymarket Toolkit
 
-**For builders who run code** — CLI, TypeScript helpers, and AI skills over Polymarket public APIs. No API keys. No signing.
+**For anyone who wants to research Polymarket on their own** — run the CLI yourself, or install skills for Claude / Cursor / OpenClaw and let AI run the tools. Read-only public APIs. No API keys. No signing.
 
 [中文说明](./README.zh.md)
 
