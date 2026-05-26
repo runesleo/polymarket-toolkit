@@ -138,6 +138,10 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 
 完整 release notes：[README.md](./README.md#release-notes)
 
+还没 [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit) 账号？上方链接注册（作者 affiliate 链接，无额外费用）。
+
+若你在**自建下单 bot** 里想支持作者，见 [builder 归因说明](./docs/builder-attribution.md)（仅对会发单的 executor 有效；本仓库只读工具本身不会附带 builder code）。
+
 ---
 
 ## 已知限制
@@ -188,3 +192,5 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 *[X 订阅](https://x.com/runes_leo/creator-subscriptions/subscribe) — 付费内容每周更新，或请我喝杯咖啡 😁*
 
 *Learn in public, Build in public.*
+
+*Affiliate：上文 Polymarket 注册链可能产生 referral 奖励；与本 MIT 工具箱功能无关。*

@@ -98,6 +98,10 @@ Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections be
 
 This repo never holds keys or sends transactions. For normal redemption, use the official Polymarket app.
 
+New to [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit)? Sign up via the link above (**affiliate disclosure:** the author may earn referral rewards; no extra cost to you).
+
+Building your own order executor? Optional [builder attribution](./docs/builder-attribution.md) applies only when **you** submit CLOB orders — this read-only toolkit does not attach a builder code by itself.
+
 ---
 
 ## Release notes
@@ -448,3 +452,5 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 *[X Subscription](https://x.com/runes_leo/creator-subscriptions/subscribe) — paid content weekly, or just buy me a coffee 😁*
 
 *Learn in public, Build in public.*
+
+*Affiliate disclosure: Polymarket signup links in this repo may earn referral rewards; unrelated to MIT toolkit functionality.*
