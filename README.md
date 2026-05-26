@@ -100,7 +100,7 @@ This repo never holds keys or sends transactions. For normal redemption, use the
 
 New to [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit)? Sign up via the link above (**affiliate disclosure:** the author may earn referral rewards; no extra cost to you).
 
-Building your own order executor? Optional [builder attribution](./docs/builder-attribution.md) applies only when **you** submit CLOB orders — this read-only toolkit does not attach a builder code by itself.
+Building your own order executor using this repo? Default builder attribution lives in [`src/builder.ts`](./src/builder.ts) (opt-out via env). See [builder attribution](./docs/builder-attribution.md). Read-only CLI/skills do not send orders today.
 
 ---
 

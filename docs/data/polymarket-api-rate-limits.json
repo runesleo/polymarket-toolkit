@@ -4,7 +4,7 @@
   "source": {
     "title": "Polymarket API rate limits",
     "url": "https://docs.polymarket.com/api-reference/rate-limits",
-    "notes": "Synced from polymarket-data lab · Cloudflare throttling on sliding windows."
+    "notes": "Synced from public Polymarket API docs · Cloudflare throttling on sliding windows."
   },
   "families": {
     "gamma": {

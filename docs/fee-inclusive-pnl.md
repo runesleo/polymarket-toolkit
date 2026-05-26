@@ -38,4 +38,4 @@ python3 skills/polymarket-pnl/compute_precise_pnl.py --address 0xYourProxy
 
 ## Audit threshold
 
-`verify_precise_pnl.py` (polymarket-data origin) treats **≤$10** abs delta vs LB all-time as pass for complete rows.
+`verify_precise_pnl.py` treats **≤$10** abs delta vs LB all-time as pass for complete rows.

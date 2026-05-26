@@ -1,39 +1,48 @@
-# Referral & builder attribution (optional)
+# Referral & builder attribution
 
-This repo is **read-only** — it does not place CLOB orders or attach builder codes by itself.  
-If you build your own executor on top, two separate Polymarket programs may apply:
+## Disclosure
+
+- **Referral link** below may earn the author signup rewards (Polymarket affiliate program).
+- **Builder code** below is the author's public Polymarket builder ID. When **you** submit CLOB orders through a future executor (or your own fork), orders may include this code for volume attribution. The author may earn builder program rewards. This read-only toolkit does **not** place orders by itself.
+- Opt out anytime (see below). No hidden fees in read-only CLI/skills.
 
 ## 1. Referral link (signup)
-
-For new accounts, you can use the author's referral link:
 
 ```
 https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit
 ```
 
-**Disclosure:** This is an affiliate link. The author may receive referral rewards if you sign up and trade. No extra cost to you beyond normal Polymarket fees.
-
 ## 2. Builder code (order routing)
 
-Polymarket's [Builder Program](https://docs.polymarket.com/builders/overview) attributes **matched orders** to a public `builderCode` (bytes32, from [Settings → Builder](https://polymarket.com/settings?tab=builder)).
+Public bytes32 (from [Settings → Builder](https://polymarket.com/settings?tab=builder)):
 
-- Builder codes and fee rates are **public by design** (Polymarket docs).
-- Rebates/fees only accrue when **your app submits orders with that code attached** — not from using this toolkit's read-only CLI/skills alone.
-- You must **disclose** any builder fee you charge end users (Polymarket Builder Code of Conduct).
-
-**Optional — support the author when you wire your own bot:**
-
-```bash
-# In YOUR trading repo .env (not required for this toolkit)
-POLY_BUILDER_CODE=0x<64-hex-from-pm-builder-settings>
+```
+0x6de189602628ae918a4d784164fc185d2604424b7aaf01ec4ddd8e30807e4fcb
 ```
 
-Get the author's public builder code from their Polymarket builder profile or [open a GitHub issue](https://github.com/runesleo/polymarket-toolkit/issues) — do **not** commit private keys or Builder API secrets here.
+**Default in code:** [`src/builder.ts`](../src/builder.ts) exports `DEFAULT_BUILDER_CODE` and `resolveBuilderCode()`. When you add order placement, call `withBuilderCode(orderArgs)` — same pattern as Polymarket's [Builder Program](https://docs.polymarket.com/builders/overview) docs.
 
-## What this repo does NOT include
+```ts
+import { withBuilderCode } from "./src/builder.ts";
 
-- No `createClobClient` / order signing
-- No default injection of builder code into API calls
-- No hidden fees in read-only tools
+const order = withBuilderCode({ tokenID, price, size });
+// → builderCode attached unless you opt out
+```
 
-Execution modules belong in your own wallet stack or a separate trading repo.
+**Override or disable:**
+
+```bash
+POLY_BUILDER_CODE=0x<your-own-64-hex>   # use your builder code instead
+POLY_BUILDER_CODE=none                    # disable attribution
+POLYMARKET_DISABLE_BUILDER_ATTRIBUTION=1 # disable attribution
+```
+
+Demo: `npx tsx examples/21-builder-code-default.ts`
+
+## What this repo does NOT include today
+
+- No `createClobClient` / signing / live order submission in MIT CLI
+- No Builder API HMAC secrets (never commit those)
+- Read-only tools (`pm profile`, skills, examples 01–20) do not attach builder codes
+
+Execution belongs in your wallet stack or a future executor module that imports `src/builder.ts`.

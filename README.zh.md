@@ -140,7 +140,7 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 
 还没 [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit) 账号？上方链接注册（作者 affiliate 链接，无额外费用）。
 
-若你在**自建下单 bot** 里想支持作者，见 [builder 归因说明](./docs/builder-attribution.md)（仅对会发单的 executor 有效；本仓库只读工具本身不会附带 builder code）。
+若你在**自建下单 bot** 里用本仓库的 executor 路径，默认会带作者 builder code（可 env 关闭）— 见 [`src/builder.ts`](./src/builder.ts) · [builder 归因说明](./docs/builder-attribution.md)。
 
 ---
 

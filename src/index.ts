@@ -475,3 +475,10 @@ export async function fetchActivityPages(
     likelyIncomplete,
   };
 }
+
+export {
+  DEFAULT_BUILDER_CODE,
+  maskBuilderCode,
+  resolveBuilderCode,
+  withBuilderCode,
+} from "./builder.ts";
