@@ -1,8 +1,115 @@
 # Polymarket Toolkit
 
-AI-powered tools for Polymarket prediction market analysis. Built for AI agents — works with Claude Code, OpenClaw, Cursor, or any LLM that can run shell commands.
+**For builders who run code** — CLI, TypeScript helpers, and AI skills over Polymarket public APIs. No API keys. No signing.
 
-## What's New in v0.4
+[中文说明](./README.zh.md)
+
+## Toolbox · pick a drawer
+
+| I want to… | Start here |
+|------------|------------|
+| **Research an address** | `pm profile <addr>` · skills `polymarket-profile` / `polymarket-pnl` / `polymarket-brier` |
+| **Scan markets & prices** | `pm markets` · [`examples/01,09,11`](./examples/) · [`docs/cookbook.md`](./docs/cookbook.md) |
+| **Wire my own data pipeline** | [`src/index.ts`](./src/index.ts) · cookbook · `examples/14` |
+| **Validation checklists** | [`docs/templates/`](./docs/templates/) — handoff · backtest · paper · live-gate · runbook |
+| **PnL cross-check (LB snapshot)** | `pm pnl-check` · [`docs/fee-inclusive-pnl.md`](./docs/fee-inclusive-pnl.md) |
+| **Track leaderboard / redeem / activity** | `pm lb` · `pm redeem` · `pm activity` · [`examples/05–08,15–20`](./examples/) |
+| **Give an AI agent tools** | [`skills/`](./skills/) — copy into Claude / OpenClaw / Cursor |
+
+Full index: [**docs/toolbox.md**](./docs/toolbox.md)
+
+### 30-second try
+
+```bash
+git clone https://github.com/runesleo/polymarket-toolkit.git && cd polymarket-toolkit
+./bin/pm profile 0x63ce342161250d705dc0b16df89036c8e5f9ba9a
+```
+
+**What you get:** LB PnL snapshot + first-page positions. For audit-grade PnL, use the `polymarket-pnl` skill.
+
+**V2 merge/split broken?** → [`docs/v2-ctf-ops-faq.md`](./docs/v2-ctf-ops-faq.md) + `./bin/pm v2-check 0x…`
+
+## CLI (`pm`)
+
+Node **22+** (uses `--experimental-strip-types`). From repo root:
+
+```bash
+./bin/pm help
+./bin/pm profile 0x63ce342161250d705dc0b16df89036c8e5f9ba9a
+./bin/pm profile Theo4 --json
+./bin/pm brier 0x63ce342161250d705dc0b16df89036c8e5f9ba9a
+./bin/pm redeem 0x63ce342161250d705dc0b16df89036c8e5f9ba9a 25
+./bin/pm markets --limit 5 --active
+./bin/pm activity 0x63ce342161250d705dc0b16df89036c8e5f9ba9a --type TRADE --max-pages 5
+```
+
+Prefer `./bin/pm` from repo root (no install step). Or: `npm run pm -- profile …` · optional `npm link` for global `pm`.
+
+| Command | What it does |
+|---------|--------------|
+| `pm profile` | LB PnL + open positions sample + Brier hint |
+| `pm activity` | Activity pagination + **~4000 row cap warnings** |
+| `pm scan` | Top markets by 24h volume + spread |
+| `pm updown` | Crypto updown event fields / resolution source |
+| `pm v2-check` | V2 CTF split/merge checklist + activity sample |
+| `pm lb` | Leaderboard snapshot + day-over-day diff |
+| `pm pnl-check` | LB snapshot + hints — not audit-grade PnL |
+| `pm limits` | Official API rate limit pacing |
+| `pm brier` | Brier score from settled positions (sample) |
+| `pm redeem` | Read-only redeem watchdog JSON |
+| `pm markets` | Quick Gamma market list |
+
+Audit-grade PnL (Python): `python3 skills/polymarket-pnl/compute_precise_pnl.py --address …`
+
+## TypeScript library
+
+Zero-dependency helpers in [`src/index.ts`](./src/index.ts). Run demos with Node 22+:
+
+```bash
+npx tsx examples/01-fetch-gamma-markets.ts
+node --experimental-strip-types examples/01-fetch-gamma-markets.ts
+```
+
+- **Examples:** [`examples/`](./examples/) — one numbered script per API pattern
+- **Cookbook:** [`docs/cookbook.md`](./docs/cookbook.md) — bilingual recipes
+
+## Skills (AI agents)
+
+| Skill | What it does |
+|-------|-------------|
+| `polymarket-profile` | Deep profile — PnL, win rate, positions, categories, strategy detection |
+| `polymarket-brier` | Prediction accuracy scoring, calibration analysis |
+| `polymarket-pnl` | Audit-grade PnL via cashflow reconstruction (~0.2% MAPE vs. official) |
+
+Install: `cp -R skills/polymarket-profile ~/.claude/skills/` (same for OpenClaw).  
+`polymarket-pnl` also needs: `pip install httpx`
+
+Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections below.
+
+---
+
+## What's in this repo
+
+| Included | Not included |
+|----------|--------------|
+| Read-only APIs, CLI, skills, docs, templates | Private keys, signing, or trade execution |
+| V2 FAQ + `pm v2-check` diagnostics | Runnable merge/split/redeem modules |
+| `polymarket-pnl` audit script | Custodial wallets or one-click trading |
+
+This repo never holds keys or sends transactions. For normal redemption, use the official Polymarket app.
+
+---
+
+## Release notes
+
+### v0.5 — Toolbox CLI + roadmap flagships
+
+- **`pm` CLI** — profile · activity · scan · updown · v2-check · brier · redeem · markets
+- **Activity cap detection** — duplicate-page warnings near ~4000 rows
+- **V2 CTF FAQ** — [`docs/v2-ctf-ops-faq.md`](./docs/v2-ctf-ops-faq.md) (split/merge/convert · infra alignment)
+- **Market scanner** · **crypto updown fields** · **handoff template** — [toolbox.md](./docs/toolbox.md)
+
+### v0.4 — Redeem watchdog
 
 **New public helper: redeem watchdog** — inspect redeemable positions without private keys.
 
@@ -18,33 +125,13 @@ const positions = await fetchRedeemablePositionsPage("0x...");
 console.log(summarizeRedeemablePositions(positions as never[]));
 ```
 
-## What's New in v0.3
+Also: **`pm` CLI** (toolbox drawers) — see [docs/toolbox.md](./docs/toolbox.md).
+
+### v0.3 — polymarket-pnl skill
 
 **New Skill: `polymarket-pnl`** — Audit-grade PnL via Data API cashflow reconstruction.
 
 Most profilers (including `polymarket-profile`) use position-level `cashPnL` which is an approximation. `polymarket-pnl` replays every BUY / SELL / REDEEM / MERGE / SPLIT / REBATE event and reconciles against current unrealized position value. Validated against Polymarket's official `/profit` endpoint on the public leaderboard: **MAPE ~0.2%**, all top accounts within 1% error. Use this when the number has to hold up to scrutiny.
-
-## TypeScript quickstart (public APIs)
-
-Small, **zero-dependency** helpers for Polymarket’s public **Gamma**, **Data**, **LB**, and **CLOB** endpoints live in [`src/index.ts`](./src/index.ts). Run any demo with **Node 18+**:
-
-```bash
-npx tsx examples/01-fetch-gamma-markets.ts
-# Zero extra installs on Node 22+:
-node --experimental-strip-types examples/01-fetch-gamma-markets.ts
-```
-
-- **Examples index:** [`examples/`](./examples/) — one numbered script per exported helper (each file stays short and self-contained).
-- **Bilingual recipes:** [`docs/cookbook.md`](./docs/cookbook.md) — ten common tasks (English first, Chinese rewrite) with copy-paste snippets and sample output.
-
-## Skills
-
-| Skill | What it does |
-|-------|-------------|
-| `polymarket-profile` | Deep profile any address — PnL, win rate, positions, categories, strategy detection |
-| `polymarket-brier` | Prediction accuracy scoring, calibration analysis, forecast quality rating |
-| `polymarket-pnl` | **NEW** — Audit-grade PnL via cashflow reconstruction (~0.2% MAPE vs. official) |
-| Public TS helpers | **NEW in v0.4** — redeem watchdog, Gamma/Data/LB/CLOB helpers |
 
 ---
 
@@ -171,6 +258,7 @@ All public, no authentication required:
 - Top Wins/Losses uses position-level cashPnl (approximate, not per-trade)
 - Large accounts (10K+ trades) may take 30+ seconds to paginate
 - lb-api 7d/30d PnL may return empty for inactive accounts
+- **Activity API ~4000 row cap:** continuing pagination may return identical JSON — use `pm activity` / `fetchActivityPages` or `polymarket-pnl` with `pagination_incomplete`
 
 ---
 
@@ -299,20 +387,52 @@ New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&
 
 ---
 
+## Validation templates
+
+Strategy validation docs from hypothesis → tiny-live (MIT templates):
+
+| Template | Purpose | Path |
+|----------|---------|------|
+| AI handoff | Cross-session task handoff (7 fields) | [handoff-template.md](./docs/templates/handoff-template.md) |
+| Backtest report | Conclusions + abandon line | [backtest-report-template.md](./docs/templates/backtest-report-template.md) |
+| Paper checklist | Anti-fake-paper · fill rules + logging | [paper-checklist.md](./docs/templates/paper-checklist.md) |
+| Live gate (12 steps) | Tiny-live technical + ops gates | [live-gate-checklist.md](./docs/templates/live-gate-checklist.md) |
+| Platform change runbook | V2 / API migration response | [platform-change-runbook.md](./docs/templates/platform-change-runbook.md) |
+
+Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbox.md](./docs/toolbox.md)
+
+> Templates are document skeletons; runnable paper/live execution code lives in your own repo.
+
+---
+
 ## Roadmap
 
 **Analysis Tools**
 - [x] PnL Calculator — Cashflow-reconstructed PnL, ~0.2% MAPE vs. official leaderboard
 - [x] Brier Score Rating — Prediction quality scoring per address
+- [x] `pm profile` CLI — Quick address snapshot
 - [ ] Trading Style Tags — Conservative / Aggressive / Event-driven / Market Maker labels
 
 **Market Intelligence**
-- [ ] Market Scanner — Discover markets by category, volume, spread, or liquidity
-- [ ] Market Liquidity Gauge — Spread, depth, and maker concentration analysis
-- [ ] LP Reward Scanner — Find active liquidity incentive programs and estimate APY
+- [x] Market Scanner Lite — `pm scan` (24h volume + spread)
+- [x] Crypto updown fields — `pm updown` + docs/crypto-updown-price-source.md
+- [ ] Market Liquidity Gauge — Depth / maker concentration (deeper)
+- [ ] LP Reward Scanner — Incentive programs / APY estimate
+
+**Platform / V2**
+- [x] V2 CTF split/merge FAQ + `pm v2-check` (read-only)
+- [x] Activity API cap warnings
+
+**Validation templates**
+- [x] Strategy handoff — docs/templates/handoff-template.md
+- [x] Backtest report — docs/templates/backtest-report-template.md
+- [x] Paper checklist — docs/templates/paper-checklist.md
+- [x] Live gate 12 steps — docs/templates/live-gate-checklist.md
+- [x] Platform change runbook — docs/templates/platform-change-runbook.md
 
 **Tracking & Alerts**
-- [ ] Leaderboard Tracker — Daily snapshots, rank changes, streak detection
+- [x] Leaderboard Tracker Lite — `pm lb` + snapshot diff
+- [x] fee-inclusive PnL guide — docs/fee-inclusive-pnl.md + `pm pnl-check`
 - [ ] Whale Alert — Large position changes from top traders
 - [x] Redeem Watchdog — public redeemable-position status for agent dashboards
 

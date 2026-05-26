@@ -353,3 +353,125 @@ export function computeBrierScoreFromSettledPositions(positions: PositionLike[])
   }
   return { brier: sumSq / settled.length, n: settled.length, wins };
 }
+
+/** Community-reported effective row cap for Data API `/activity` offset/cursor pagination. */
+export const ACTIVITY_API_ROW_CAP_HINT = 4000;
+
+export type ActivityPaginationWarningCode =
+  | "DUPLICATE_PAGE"
+  | "STALE_CURSOR"
+  | "APPROACHING_CAP"
+  | "INCOMPLETE";
+
+export type ActivityPaginationWarning = {
+  code: ActivityPaginationWarningCode;
+  message: string;
+};
+
+type ActivityRow = { timestamp?: number };
+
+/** Stable fingerprint to detect duplicate JSON pages (issue #1). */
+export function fingerprintActivityPage(rows: unknown[]): string {
+  return JSON.stringify(rows);
+}
+
+/** Build warnings from pagination probe results (pure · testable). */
+export function analyzeActivityPaginationWarnings(options: {
+  totalRows: number;
+  sawDuplicatePage: boolean;
+  sawStaleCursor: boolean;
+}): ActivityPaginationWarning[] {
+  const warnings: ActivityPaginationWarning[] = [];
+  if (options.sawDuplicatePage) {
+    warnings.push({
+      code: "DUPLICATE_PAGE",
+      message:
+        `Activity API returned an identical page twice (reported ~${ACTIVITY_API_ROW_CAP_HINT} row cap). Treat results as INCOMPLETE — shard by time window or use skills/polymarket-pnl \`pagination_incomplete\` flags.`,
+    });
+  }
+  if (options.sawStaleCursor) {
+    warnings.push({
+      code: "STALE_CURSOR",
+      message: "Activity cursor (`end`) did not advance between pages. Pagination may have stalled.",
+    });
+  }
+  if (options.sawDuplicatePage || options.sawStaleCursor) {
+    warnings.push({
+      code: "INCOMPLETE",
+      message: "Activity pagination did not produce a complete scan. Shard by time window before relying on totals.",
+    });
+  }
+  if (options.totalRows >= ACTIVITY_API_ROW_CAP_HINT - 500) {
+    warnings.push({
+      code: "APPROACHING_CAP",
+      message: `Fetched ${options.totalRows} activity rows (approaching ~${ACTIVITY_API_ROW_CAP_HINT} cap). Next pages may repeat JSON.`,
+    });
+  }
+  return warnings;
+}
+
+export function activityWarningsLikelyIncomplete(warnings: ActivityPaginationWarning[]): boolean {
+  return warnings.some((w) => w.code === "APPROACHING_CAP" || w.code === "INCOMPLETE");
+}
+
+/**
+ * Paginate `/activity` with duplicate-page and stale-cursor detection.
+ * Does not mutate wallets or bypass API limits — surfaces INCOMPLETE honestly.
+ */
+export async function fetchActivityPages(
+  user: string,
+  options: { limit?: number; maxPages?: number; type?: string } = {},
+): Promise<{
+  rows: unknown[];
+  pagesFetched: number;
+  warnings: ActivityPaginationWarning[];
+  likelyIncomplete: boolean;
+}> {
+  const limit = options.limit ?? 500;
+  const maxPages = options.maxPages ?? 20;
+  const collected: unknown[] = [];
+  let end: number | undefined;
+  let lastFingerprint = "";
+  let sawDuplicatePage = false;
+  let sawStaleCursor = false;
+  let pagesFetched = 0;
+
+  for (let page = 0; page < maxPages; page++) {
+    const batch = (await fetchActivityPage(user, { limit, end, type: options.type })) as ActivityRow[];
+    pagesFetched += 1;
+    if (!batch.length) break;
+
+    const fp = fingerprintActivityPage(batch);
+    if (lastFingerprint && fp === lastFingerprint) {
+      sawDuplicatePage = true;
+      break;
+    }
+    lastFingerprint = fp;
+    collected.push(...batch);
+
+    if (batch.length < limit) break;
+
+    const lastTs = batch[batch.length - 1]?.timestamp;
+    if (lastTs == null) break;
+    if (end !== undefined && end === lastTs) {
+      sawStaleCursor = true;
+      break;
+    }
+    end = lastTs;
+  }
+
+  const warnings = analyzeActivityPaginationWarnings({
+    totalRows: collected.length,
+    sawDuplicatePage,
+    sawStaleCursor,
+  });
+
+  const likelyIncomplete = activityWarningsLikelyIncomplete(warnings);
+
+  return {
+    rows: collected,
+    pagesFetched,
+    warnings,
+    likelyIncomplete,
+  };
+}

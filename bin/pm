@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+/**
+ * Launcher for pm CLI — runs TypeScript via Node strip-types (Node 22+).
+ * Fallback: npx tsx src/cli/main.ts
+ */
+import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const mainTs = join(__dirname, "../src/cli/main.ts");
+const args = ["--experimental-strip-types", mainTs, ...process.argv.slice(2)];
+
+const result = spawnSync(process.execPath, args, { stdio: "inherit" });
+process.exit(result.status === null ? 1 : result.status);

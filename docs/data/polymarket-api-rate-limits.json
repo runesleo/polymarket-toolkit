@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-25T08:30:00+00:00",
+  "source": {
+    "title": "Polymarket API rate limits",
+    "url": "https://docs.polymarket.com/api-reference/rate-limits",
+    "notes": "Synced from polymarket-data lab · Cloudflare throttling on sliding windows."
+  },
+  "families": {
+    "gamma": {
+      "base_url": "https://gamma-api.polymarket.com",
+      "auth": "none",
+      "limits": [
+        {"scope": "general", "requests": 4000, "window_seconds": 10},
+        {"scope": "/events", "requests": 500, "window_seconds": 10},
+        {"scope": "/markets", "requests": 300, "window_seconds": 10},
+        {"scope": "/comments", "requests": 200, "window_seconds": 10}
+      ]
+    },
+    "data": {
+      "base_url": "https://data-api.polymarket.com",
+      "auth": "none",
+      "limits": [
+        {"scope": "general", "requests": 1000, "window_seconds": 10},
+        {"scope": "/trades", "requests": 200, "window_seconds": 10},
+        {"scope": "/positions", "requests": 150, "window_seconds": 10},
+        {"scope": "/closed-positions", "requests": 150, "window_seconds": 10}
+      ]
+    },
+    "clob": {
+      "base_url": "https://clob.polymarket.com",
+      "auth": "mixed",
+      "limits": [
+        {"scope": "general", "requests": 9000, "window_seconds": 10},
+        {"scope": "/book", "requests": 1500, "window_seconds": 10},
+        {"scope": "/midpoint", "requests": 1500, "window_seconds": 10}
+      ]
+    }
+  }
+}

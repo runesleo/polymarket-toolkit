@@ -278,11 +278,17 @@ console.log(await fetchPositionsPage(user, { limit: 5, offset: 0 }));
 
 Use `type` to focus on `TRADE`, `REDEEM`, etc. Cursor with `end` follows Polymarket’s Data API semantics used in the skills — see `skills/polymarket-profile/SKILL.md` for full pagination.
 
+> **Cap warning (issue #1):** Community reports ~4000 effective rows on `/activity`; pages beyond that may return **identical JSON**. Use `fetchActivityPages` or `pm activity` / `examples/16-activity-cap-probe.ts` to detect `DUPLICATE_PAGE` / `STALE_CURSOR`. For audit PnL use `skills/polymarket-pnl` (`pagination_incomplete` field).
+
 ```ts
-import { fetchActivityPage } from "./src/index.ts";
+import { fetchActivityPage, fetchActivityPages } from "./src/index.ts";
 
 const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
 console.log(await fetchActivityPage(user, { limit: 20, type: "TRADE" }));
+
+// Safer multi-page probe:
+const probe = await fetchActivityPages(user, { limit: 500, maxPages: 10, type: "TRADE" });
+console.log(probe.warnings);
 ```
 
 **Example output**
@@ -298,11 +304,14 @@ console.log(await fetchActivityPage(user, { limit: 20, type: "TRADE" }));
 
 做流水分析时先用 `type=TRADE` 把噪声砍掉一半。真要审计级回放，去看 profile / pnl 两个 SKILL 里写的分页细节：同一秒挤满一页时的边界条件，处理不好会漏单。
 
+**上限警告（issue #1）：** `/activity` 有效深度大约 **4000 行**；继续翻页可能返回**相同 JSON**。用 `fetchActivityPages` 或 `./bin/pm activity` / `examples/16` 检测；审计级 PnL 看 `polymarket-pnl` 的 `pagination_incomplete`。
+
 ```ts
-import { fetchActivityPage } from "./src/index.ts";
+import { fetchActivityPages } from "./src/index.ts";
 
 const user = process.argv[2] ?? "0x63ce342161250d705dc0b16df89036c8e5f9ba9a";
-console.log(await fetchActivityPage(user, { limit: 20, type: "TRADE" }));
+const probe = await fetchActivityPages(user, { limit: 500, maxPages: 10, type: "TRADE" });
+console.log({ rows: probe.rows.length, warnings: probe.warnings });
 ```
 
 ---
