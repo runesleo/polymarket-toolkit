@@ -95,12 +95,13 @@ Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections be
 | Read-only APIs, CLI, skills, docs, templates | Private keys, signing, or trade execution |
 | V2 FAQ + `pm v2-check` diagnostics | Runnable merge/split/redeem modules |
 | `polymarket-pnl` audit script | Custodial wallets or one-click trading |
+| Builder attribution helper for future CLOB executors | Builder API credentials or reward guarantees |
 
 This repo never holds keys or sends transactions. For normal redemption, use the official Polymarket app.
 
 New to [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit)? Sign up via the link above (**affiliate disclosure:** the author may earn referral rewards; no extra cost to you).
 
-Building your own order executor using this repo? Default builder attribution lives in [`src/builder.ts`](./src/builder.ts) (opt-out via env). See [builder attribution](./docs/builder-attribution.md). Read-only CLI/skills do not send orders today.
+Building your own order executor using this repo? Default builder attribution lives in [`src/builder.ts`](./src/builder.ts) (opt-out via env). See [builder attribution](./docs/builder-attribution.md) for the helper, disclosure, and FAQ. Read-only CLI/skills do not send orders today.
 
 ---
 
@@ -111,6 +112,7 @@ Building your own order executor using this repo? Default builder attribution li
 - **`pm` CLI** — profile · activity · scan · updown · v2-check · brier · redeem · markets
 - **Activity cap detection** — duplicate-page warnings near ~4000 rows
 - **V2 CTF FAQ** — [`docs/v2-ctf-ops-faq.md`](./docs/v2-ctf-ops-faq.md) (split/merge/convert · infra alignment)
+- **Builder attribution helper** — [`src/builder.ts`](./src/builder.ts) + [`docs/builder-attribution.md`](./docs/builder-attribution.md) for future CLOB executors, with default / override / opt-out paths
 - **Market scanner** · **crypto updown fields** · **handoff template** — [toolbox.md](./docs/toolbox.md)
 
 ### v0.4 — Redeem watchdog
