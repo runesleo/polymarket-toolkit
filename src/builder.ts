@@ -22,6 +22,9 @@ export function resolveBuilderCode(options: { disable?: boolean } = {}): string 
     if (!raw) continue;
     if (raw === "none" || raw === "off") return undefined;
     if (BUILDER_CODE_PATTERN.test(raw)) return raw;
+    // Fail safe: a malformed explicit override disables attribution instead of
+    // silently falling back to the author's default.
+    return undefined;
   }
 
   return DEFAULT_BUILDER_CODE;
