@@ -1,7 +1,7 @@
 {
   "name": "polymarket-toolkit-mcp",
-  "version": "0.7.0",
-  "description": "MCP server exposing polymarket-toolkit's read-only Polymarket data CLI as tools for AI agents. No keys, no orders — data only.",
+  "version": "0.7.1",
+  "description": "MCP server exposing polymarket-toolkit's read-only Polymarket data CLI as tools for AI agents. No keys, no orders \u2014 data only.",
   "type": "module",
   "bin": {
     "polymarket-toolkit-mcp": "dist/server.js"
@@ -47,5 +47,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "mcpName": "io.github.runesleo/polymarket-toolkit"
 }
