@@ -96,16 +96,24 @@ Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections be
 | V2 FAQ + `pm v2-check` diagnostics | Runnable merge/split/redeem modules |
 | `polymarket-pnl` audit script | Custodial wallets or one-click trading |
 | Builder attribution helper for future CLOB executors | Builder API credentials or reward guarantees |
+| Opt-in [`executor/`](./executor) sub-package (isolated deps, dry-run default) | Custody, strategy logic, or one-click trading |
 
-This repo never holds keys or sends transactions. For normal redemption, use the official Polymarket app.
+The core (`src/`, CLI, skills) never holds keys or sends transactions. Order execution lives only in the opt-in [`executor/`](./executor) sub-package, which signs with **your** env-provided key, defaults to dry-run, and is never imported by the core. For normal redemption, use the official Polymarket app.
 
 New to [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit)? Sign up via the link above (**affiliate disclosure:** the author may earn referral rewards; no extra cost to you).
 
-Building your own order executor using this repo? Default builder attribution lives in [`src/builder.ts`](./src/builder.ts) (opt-out via env). See [builder attribution](./docs/builder-attribution.md) for the helper, disclosure, and FAQ. Read-only CLI/skills do not send orders today.
+Building your own order executor? Start from the opt-in [`executor/`](./executor) sub-package ([docs/executor.md](./docs/executor.md)) — CLOB V2 limit orders with dry-run default, notional cap, and default builder attribution via [`src/builder.ts`](./src/builder.ts) (override / opt-out via env). See [builder attribution](./docs/builder-attribution.md) for the disclosure and FAQ. Read-only CLI/skills still do not send orders.
 
 ---
 
 ## Release notes
+
+### v0.6 — Opt-in executor sub-package
+
+- **`executor/`** — isolated CLOB V2 order execution module ([docs/executor.md](./docs/executor.md)): own dependencies, never imported by the zero-dependency core
+- **Safety ladder** — dry-run by default (`EXECUTOR_LIVE=1` to post), notional cap `EXECUTOR_MAX_USD` (default $10), fail-closed credential validation
+- **Builder attribution wired end-to-end** — default / override / opt-out via core [`src/builder.ts`](./src/builder.ts), full disclosure in docs
+- Core CLI/skills remain read-only and key-free — scope table updated above
 
 ### v0.5 — Toolbox CLI + roadmap flagships
 

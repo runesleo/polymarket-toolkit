@@ -1,0 +1,20 @@
+{
+  "name": "@leolabs/polymarket-executor",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Opt-in CLOB V2 order execution module for polymarket-toolkit. Needs keys — isolated from the zero-dependency read-only core.",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "dry-run": "node --experimental-strip-types examples/dry-run.ts"
+  },
+  "dependencies": {
+    "@ethersproject/wallet": "^5.8.0",
+    "@polymarket/clob-client-v2": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

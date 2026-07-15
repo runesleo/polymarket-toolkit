@@ -103,8 +103,9 @@ node --experimental-strip-types examples/01-fetch-gamma-markets.ts
 | 只读 API、CLI、Skills、文档、模板 | 私钥、签名、代发交易 |
 | V2 FAQ + `pm v2-check` 诊断清单 | merge/split/redeem **执行**模块 |
 | `polymarket-pnl` 审计脚本 | 托管钱包或一键下单 |
+| 可选 [`executor/`](./executor) 子包（依赖隔离、默认 dry-run） | 托管、策略逻辑、代客交易 |
 
-本仓库**不**持有私钥、**不**代发交易。正常 redeem 请用 Polymarket 官方 App。
+核心（`src/`、CLI、Skills）**不**持有私钥、**不**代发交易。下单能力只存在于可选的 [`executor/`](./executor) 子包：用**你自己**通过 env 提供的私钥签名，默认 dry-run，核心代码永远不 import 它。正常 redeem 请用 Polymarket 官方 App。
 
 ---
 
@@ -140,7 +141,7 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 
 还没 [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit) 账号？上方链接注册（作者 affiliate 链接，无额外费用）。
 
-若你在**自建下单 bot** 里用本仓库的 executor 路径，默认会带作者 builder code（可 env 关闭）— 见 [`src/builder.ts`](./src/builder.ts) · [builder 归因说明](./docs/builder-attribution.md)。
+想自建下单 bot？可以直接从 [`executor/`](./executor) 子包起步（[docs/executor.md](./docs/executor.md)）：CLOB V2 限价单、默认 dry-run（`EXECUTOR_LIVE=1` 才真发单）、单笔名义额上限 `EXECUTOR_MAX_USD`（默认 $10）。经它发出的订单默认带作者 builder code，可 env 覆盖为你自己的、也可一键关闭 — 见 [`src/builder.ts`](./src/builder.ts) · [builder 归因说明](./docs/builder-attribution.md)。
 
 ---
 
