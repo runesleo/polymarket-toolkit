@@ -1,11 +1,22 @@
 /** Spawn the repo's `pm` CLI (no shell — argv array only). */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const CLI_ENTRY = path.join(REPO_ROOT, "src", "cli", "main.ts");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, "..", "..");
+
+/**
+ * In the published npm package, the CLI is bundled to plain JS next to this file
+ * (dist/cli.js — no strip-types flag needed). In the repo, fall back to the
+ * TypeScript source via --experimental-strip-types.
+ */
+const BUNDLED_CLI = path.join(HERE, "cli.js");
+const NODE_ARGS = existsSync(BUNDLED_CLI)
+  ? [BUNDLED_CLI]
+  : ["--experimental-strip-types", path.join(REPO_ROOT, "src", "cli", "main.ts")];
 
 export interface CliResult {
   code: number;
@@ -18,11 +29,11 @@ export const MAX_OUTPUT_BYTES = 2_000_000;
 
 export function runPmCli(argv: string[], timeoutMs = 60_000): Promise<CliResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--experimental-strip-types", CLI_ENTRY, ...argv],
-      { cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], env: process.env },
-    );
+    const child = spawn(process.execPath, [...NODE_ARGS, ...argv], {
+      cwd: REPO_ROOT,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
     let stdout = "";
     let stderr = "";
     let captured = 0;

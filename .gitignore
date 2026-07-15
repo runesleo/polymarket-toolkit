@@ -15,3 +15,7 @@ venv/
 checkpoints/
 .pm-toolkit/
 precise_pnl.jsonl
+
+# mcp build artifacts
+mcp/dist/
+mcp/docs/data/

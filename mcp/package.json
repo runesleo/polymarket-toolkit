@@ -1,23 +1,51 @@
 {
-  "name": "@leolabs/polymarket-mcp",
+  "name": "polymarket-toolkit-mcp",
   "version": "0.7.0",
-  "private": true,
-  "description": "MCP server exposing polymarket-toolkit's read-only CLI as tools for AI agents. No keys, no orders \u2014 data only.",
+  "description": "MCP server exposing polymarket-toolkit's read-only Polymarket data CLI as tools for AI agents. No keys, no orders — data only.",
   "type": "module",
+  "bin": {
+    "polymarket-toolkit-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "docs/data",
+    "README.md"
+  ],
   "scripts": {
     "start": "node --experimental-strip-types src/server.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --banner:js='#!/usr/bin/env node' && esbuild ../src/cli/main.ts --bundle --platform=node --format=esm --outfile=dist/cli.js && mkdir -p docs/data && cp ../docs/data/polymarket-api-rate-limits.json docs/data/",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runesleo/polymarket-toolkit.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://github.com/runesleo/polymarket-toolkit/blob/main/docs/mcp.md",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "polymarket",
+    "prediction-markets",
+    "ai-agents",
+    "claude"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.8.0"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

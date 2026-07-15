@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.runesleo/polymarket-toolkit",
+  "description": "Read-only Polymarket data tools for AI agents: profiles, activity, Brier scores, PnL checks, market scans, leaderboards. No keys, no orders.",
+  "repository": {
+    "url": "https://github.com/runesleo/polymarket-toolkit",
+    "source": "github"
+  },
+  "version": "0.7.0",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "identifier": "polymarket-toolkit-mcp",
+      "version": "0.7.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
