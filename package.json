@@ -1,6 +1,6 @@
 {
   "name": "polymarket-toolkit",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Polymarket public HTTP/WebSocket helpers plus agent skills (profile, Brier, PnL).",
@@ -8,7 +8,7 @@
     "pm": "./bin/pm"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.6"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",

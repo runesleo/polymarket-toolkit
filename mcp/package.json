@@ -1,0 +1,23 @@
+{
+  "name": "@leolabs/polymarket-mcp",
+  "version": "0.7.0",
+  "private": true,
+  "description": "MCP server exposing polymarket-toolkit's read-only CLI as tools for AI agents. No keys, no orders \u2014 data only.",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

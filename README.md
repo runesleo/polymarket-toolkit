@@ -97,6 +97,7 @@ Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections be
 | `polymarket-pnl` audit script | Custodial wallets or one-click trading |
 | Builder attribution helper for future CLOB executors | Builder API credentials or reward guarantees |
 | Opt-in [`executor/`](./executor) sub-package (isolated deps, dry-run default) | Custody, strategy logic, or one-click trading |
+| [`mcp/`](./mcp) MCP server — read-only tools for AI agents ([docs/mcp.md](./docs/mcp.md)) | MCP-exposed order placement |
 
 The core (`src/`, CLI, skills) never holds keys or sends transactions. Order execution lives only in the opt-in [`executor/`](./executor) sub-package, which signs with **your** env-provided key, defaults to dry-run, and is never imported by the core. For normal redemption, use the official Polymarket app.
 
@@ -107,6 +108,12 @@ Building your own order executor? Start from the opt-in [`executor/`](./executor
 ---
 
 ## Release notes
+
+### v0.7 — MCP server for AI agents
+
+- **`mcp/`** — [Model Context Protocol](https://modelcontextprotocol.io) server exposing 10 read-only tools (`pm_profile`, `pm_activity`, `pm_brier`, `pm_scan`, `pm_updown`, `pm_leaderboard`, `pm_redeem_watchdog`, `pm_pnl_check`, `pm_v2_check`, `pm_rate_limits`) — [docs/mcp.md](./docs/mcp.md)
+- The CLI is the contract: every tool shells out to `pm`, so the server is exactly as read-only as the CLI; inputs are allowlist-validated before reaching argv
+- Order placement is deliberately **not** exposed over MCP — the executor stays a separate, human-wired opt-in
 
 ### v0.6 — Opt-in executor sub-package
 

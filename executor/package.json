@@ -2,7 +2,7 @@
   "name": "@leolabs/polymarket-executor",
   "version": "0.6.0",
   "private": true,
-  "description": "Opt-in CLOB V2 order execution module for polymarket-toolkit. Needs keys — isolated from the zero-dependency read-only core.",
+  "description": "Opt-in CLOB V2 order execution module for polymarket-toolkit. Needs keys \u2014 isolated from the zero-dependency read-only core.",
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
@@ -16,5 +16,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

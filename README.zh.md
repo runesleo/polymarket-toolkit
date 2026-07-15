@@ -104,6 +104,7 @@ node --experimental-strip-types examples/01-fetch-gamma-markets.ts
 | V2 FAQ + `pm v2-check` 诊断清单 | merge/split/redeem **执行**模块 |
 | `polymarket-pnl` 审计脚本 | 托管钱包或一键下单 |
 | 可选 [`executor/`](./executor) 子包（依赖隔离、默认 dry-run） | 托管、策略逻辑、代客交易 |
+| [`mcp/`](./mcp) MCP server — 给 AI agent 的只读工具（[docs/mcp.md](./docs/mcp.md)） | 通过 MCP 下单 |
 
 核心（`src/`、CLI、Skills）**不**持有私钥、**不**代发交易。下单能力只存在于可选的 [`executor/`](./executor) 子包：用**你自己**通过 env 提供的私钥签名，默认 dry-run，核心代码永远不 import 它。正常 redeem 请用 Polymarket 官方 App。
 
