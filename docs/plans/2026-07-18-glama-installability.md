@@ -8,7 +8,7 @@
 
 **Phase Path:** Capture live failure evidence → reproduce the non-executable npm bin → add failing tests → fix and bump the package → add minimal Glama configuration → run packed-tarball introspection → local commit → request approval for publication.
 
-**Current Batch:** Complete test-first local implementation, verification, T297 writeback, and writer-lock release.
+**Current Batch:** Complete test-first local implementation, release verification, and handoff.
 
 **Stop Conditions:** Stop on baseline/test failure, Docker unavailability after one diagnostic retry, writer conflict, credential/account request, push/public-release boundary, or try cap 3.
 

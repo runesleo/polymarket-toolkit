@@ -80,9 +80,9 @@ Use `./bin/pm` from the repo root for all examples here. Or: `npm link` then `pm
 
 | Skill | Install |
 |-------|---------|
-| polymarket-profile | `cp -R skills/polymarket-profile ~/.claude/skills/` |
-| polymarket-pnl | `cp -R skills/polymarket-pnl ~/.claude/skills/` + `pip install httpx` |
-| polymarket-brier | `cp -R skills/polymarket-brier ~/.claude/skills/` |
+| polymarket-profile | `cp -R skills/polymarket-profile /path/to/your/agent/skills/` |
+| polymarket-pnl | `cp -R skills/polymarket-pnl /path/to/your/agent/skills/` + `pip install httpx` |
+| polymarket-brier | `cp -R skills/polymarket-brier /path/to/your/agent/skills/` |
 
 ---
 
