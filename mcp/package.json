@@ -1,6 +1,6 @@
 {
   "name": "polymarket-toolkit-mcp",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "MCP server exposing polymarket-toolkit's read-only Polymarket data CLI as tools for AI agents. No keys, no orders \u2014 data only.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --banner:js='#!/usr/bin/env node' && esbuild ../src/cli/main.ts --bundle --platform=node --format=esm --outfile=dist/cli.js && mkdir -p docs/data && cp ../docs/data/polymarket-api-rate-limits.json docs/data/",
+    "postbuild": "node -e \"require('node:fs').chmodSync('dist/server.js', 0o755)\"",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "repository": {
@@ -46,7 +47,8 @@
     "node": ">=20"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "mcpName": "io.github.runesleo/polymarket-toolkit"
 }

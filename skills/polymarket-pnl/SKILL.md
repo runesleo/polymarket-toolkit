@@ -34,7 +34,7 @@ pip install -r ${SKILL_DIR}/requirements.txt
 pip install httpx
 ```
 
-`${SKILL_DIR}` is the path where this skill lives (e.g. `~/.claude/skills/polymarket-pnl/`).
+`${SKILL_DIR}` is the path where this skill lives (for example, `/path/to/your/agent/skills/polymarket-pnl/`).
 
 ## Core CLI
 
@@ -111,7 +111,8 @@ All public, no authentication required:
 
 ```bash
 # Claude Code
-cp -R skills/polymarket-pnl ~/.claude/skills/
+export AGENT_SKILLS_DIR=/path/to/your/agent/skills
+cp -R skills/polymarket-pnl "$AGENT_SKILLS_DIR/"
 pip install httpx
 
 # OpenClaw

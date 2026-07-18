@@ -89,7 +89,7 @@ node --experimental-strip-types examples/01-fetch-gamma-markets.ts
 | `polymarket-brier` | 预测准确度（Brier Score）与校准分析 |
 | `polymarket-pnl` | 现金流重建审计级 PnL（相对官方 ~0.2% MAPE） |
 
-安装：`cp -R skills/polymarket-profile ~/.claude/skills/`（OpenClaw 同理）  
+安装：将所需 skill 复制到你的 Agent 客户端所配置的 skills 目录。
 `polymarket-pnl` 另需：`pip install httpx`
 
 详细说明：[`skills/*/SKILL.md`](./skills/) · 长文档见 [English README](./README.md#skills-ai-agents) 各 Skill 章节。

@@ -81,7 +81,7 @@ node --experimental-strip-types examples/01-fetch-gamma-markets.ts
 | `polymarket-brier` | Prediction accuracy scoring, calibration analysis |
 | `polymarket-pnl` | Audit-grade PnL via cashflow reconstruction (~0.2% MAPE vs. official) |
 
-Install: `cp -R skills/polymarket-profile ~/.claude/skills/` (same for OpenClaw).  
+Install: copy the chosen skill into the skills directory configured by your agent client.
 `polymarket-pnl` also needs: `pip install httpx`
 
 Skill details: [`skills/*/SKILL.md`](./skills/) · long-form docs in sections below.
@@ -232,8 +232,9 @@ AI: Fetching data... (paginating 12 pages of activity)
 
 **Claude Code:**
 ```bash
-# Copy the skill to your skills directory
-cp -R skills/polymarket-profile ~/.claude/skills/
+# Replace the placeholder with the skills directory configured by your client
+export AGENT_SKILLS_DIR=/path/to/your/agent/skills
+cp -R skills/polymarket-profile "$AGENT_SKILLS_DIR/"
 ```
 
 **OpenClaw:**
@@ -325,7 +326,8 @@ AI: Fetching settled positions...
 
 ```bash
 # Claude Code
-cp -R skills/polymarket-brier ~/.claude/skills/
+export AGENT_SKILLS_DIR=/path/to/your/agent/skills
+cp -R skills/polymarket-brier "$AGENT_SKILLS_DIR/"
 
 # OpenClaw
 cp -R skills/polymarket-brier ~/.openclaw/skills/
@@ -374,7 +376,8 @@ AI: Fetching leaderboard... (10 addresses)
 
 ```bash
 # Claude Code
-cp -R skills/polymarket-pnl ~/.claude/skills/
+export AGENT_SKILLS_DIR=/path/to/your/agent/skills
+cp -R skills/polymarket-pnl "$AGENT_SKILLS_DIR/"
 pip install httpx  # the only runtime dependency
 
 # OpenClaw
