@@ -125,6 +125,11 @@ export async function runMarkout(argv: string[]): Promise<void> {
         `${fmt(r.mine.meanCents).padStart(9)} ${fmt(r.mine.medianCents).padStart(8)} ` +
         `${fmt(r.baseline?.meanCents ?? null).padStart(9)} ${fmt(r.excessCents).padStart(9)}`,
     );
+    if (r.mine.n === 0) {
+      console.log(
+        `           no fill had a print ${r.tau}s ahead of it on the same token — not measured`,
+      );
+    }
   }
 
   console.log("\n  By direction (excess over baseline):");

@@ -532,9 +532,10 @@ export async function fetchMarketTrades(
 export interface MarkoutBucket {
   tau: number;
   n: number;
-  meanCents: number;
-  medianCents: number;
-  weightedUsd: number;
+  /** null when n === 0 — never 0, which would read as "flat" rather than "not measured". */
+  meanCents: number | null;
+  medianCents: number | null;
+  weightedUsd: number | null;
 }
 
 export interface MarkoutTauResult {
@@ -587,7 +588,7 @@ function windowVwap(
 
 function bucket(values: Array<{ mo: number; size: number }>, tau: number): MarkoutBucket {
   if (values.length === 0) {
-    return { tau, n: 0, meanCents: 0, medianCents: 0, weightedUsd: 0 };
+    return { tau, n: 0, meanCents: null, medianCents: null, weightedUsd: null };
   }
   const mos = values.map((v) => v.mo).sort((a, b) => a - b);
   const mean = mos.reduce((a, b) => a + b, 0) / mos.length;
@@ -659,6 +660,13 @@ export function computeMarkout(
 
     const mineBucket = bucket(mine, tau);
     const baseBucket = base.length > 0 ? bucket(base, tau) : null;
+    // An excess needs both sides measured. Subtracting a baseline from an unmeasured
+    // wallet yields a number that looks like a verdict and is really just the baseline
+    // negated — the shape that survives every `!= null` check downstream.
+    const excessCents =
+      mineBucket.meanCents !== null && baseBucket?.meanCents != null
+        ? mineBucket.meanCents - baseBucket.meanCents
+        : null;
     const avg = (xs: number[]): number | null =>
       xs.length > 0 ? (xs.reduce((a, b) => a + b, 0) / xs.length) * 100 : null;
 
@@ -666,7 +674,7 @@ export function computeMarkout(
       tau,
       mine: mineBucket,
       baseline: baseBucket,
-      excessCents: baseBucket ? mineBucket.meanCents - baseBucket.meanCents : null,
+      excessCents,
       coverage: fills.length > 0 ? mineBucket.n / fills.length : 0,
       byDirection: {
         BUY: { mine: avg(dir.BUY.mine), baseline: avg(dir.BUY.base) },

@@ -25,7 +25,7 @@ test("markout is negative when price moves against a BUY", () => {
   const [r] = computeMarkout(fills, prints, { taus: [10] });
   assert.ok(r);
   assert.equal(r.mine.n, 1);
-  assert.ok(Math.abs(r.mine.meanCents - -10) < 1e-9, `got ${r.mine.meanCents}`);
+  assert.ok(Math.abs((r.mine.meanCents ?? NaN) - -10) < 1e-9, `got ${r.mine.meanCents}`);
 });
 
 test("a SELL is scored with the opposite sign", () => {
@@ -33,7 +33,7 @@ test("a SELL is scored with the opposite sign", () => {
   const prints = [trade({ price: 0.5, timestamp: 110 })];
   const [r] = computeMarkout(fills, prints, { taus: [10] });
   assert.ok(r);
-  assert.ok(Math.abs(r.mine.meanCents - 10) < 1e-9, `got ${r.mine.meanCents}`);
+  assert.ok(Math.abs((r.mine.meanCents ?? NaN) - 10) < 1e-9, `got ${r.mine.meanCents}`);
 });
 
 test("reference price is size-weighted across the window, not the next print", () => {
@@ -46,7 +46,7 @@ test("reference price is size-weighted across the window, not the next print", (
   ];
   const [r] = computeMarkout(fills, prints, { taus: [10] });
   assert.ok(r);
-  assert.ok(Math.abs(r.mine.meanCents - 5) < 1e-9, `got ${r.mine.meanCents}`);
+  assert.ok(Math.abs((r.mine.meanCents ?? NaN) - 5) < 1e-9, `got ${r.mine.meanCents}`);
 });
 
 test("baseline excludes the address under test", () => {
@@ -63,7 +63,7 @@ test("baseline excludes the address under test", () => {
   // Rival bought at 0.50 and the reference is 0.50 -> flat; the 110 print prices itself
   // at tau=10 only if a later print exists, which it does not, so n=1.
   assert.equal(r.baseline.n, 1);
-  assert.ok(Math.abs(r.baseline.meanCents - 0) < 1e-9, `got ${r.baseline.meanCents}`);
+  assert.ok(Math.abs((r.baseline.meanCents ?? NaN) - 0) < 1e-9, `got ${r.baseline.meanCents}`);
   assert.ok(Math.abs((r.excessCents ?? 0) - -10) < 1e-9, `got ${r.excessCents}`);
 });
 
@@ -89,6 +89,26 @@ test("a token with no prints at all yields zero coverage rather than throwing", 
   assert.equal(r.excessCents, null);
 });
 
+test("an unmeasured wallet reports null, not a number, even when the baseline is measured", () => {
+  // The wallet trades a token nobody else prints; the baseline is fine on its own token.
+  // Treating the empty bucket as 0c would yield excess = -baseline, which reads as a
+  // verdict and passes every `!= null` check downstream.
+  const me = "0xme";
+  const fills = [trade({ proxyWallet: me, asset: "LONELY", price: 0.5, timestamp: 100 })];
+  const prints = [
+    trade({ proxyWallet: "0xrival", asset: "BUSY", price: 0.4, timestamp: 100 }),
+    trade({ proxyWallet: "0xrival2", asset: "BUSY", price: 0.6, timestamp: 110 }),
+  ];
+  const [r] = computeMarkout(fills, prints, { taus: [10], excludeAddress: me });
+  assert.ok(r);
+  assert.equal(r.mine.n, 0);
+  assert.equal(r.mine.meanCents, null);
+  assert.equal(r.mine.medianCents, null);
+  assert.equal(r.mine.weightedUsd, null);
+  assert.ok(r.baseline && r.baseline.n > 0, "baseline should still be measured");
+  assert.equal(r.excessCents, null);
+});
+
 test("tokens are kept separate — a YES print never prices a NO fill", () => {
   const fills = [trade({ proxyWallet: "0xme", asset: "YES", price: 0.6, timestamp: 100 })];
   const prints = [
@@ -97,5 +117,5 @@ test("tokens are kept separate — a YES print never prices a NO fill", () => {
   ];
   const [r] = computeMarkout(fills, prints, { taus: [10] });
   assert.ok(r);
-  assert.ok(Math.abs(r.mine.meanCents - 10) < 1e-9, `got ${r.mine.meanCents}`);
+  assert.ok(Math.abs((r.mine.meanCents ?? NaN) - 10) < 1e-9, `got ${r.mine.meanCents}`);
 });
