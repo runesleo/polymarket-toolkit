@@ -9,6 +9,7 @@
 | I want to… | Start here |
 |------------|------------|
 | **Research an address** | `pm profile <addr>` · skills `polymarket-profile` / `polymarket-pnl` / `polymarket-brier` |
+| **See whether they actually cash out** | `pm cashflow <addr>` — on-chain pUSD withdrawals, separated from trade settlement |
 | **Check execution quality** | `pm markout <addr>` — markout vs market baseline (adverse selection) |
 | **Classify a trader** | `pm mix <addr>` — passive market maker or aggressive taker |
 | **Scan markets & prices** | `pm markets` · [`examples/01,09,11`](./examples/) · [`docs/cookbook.md`](./docs/cookbook.md) |

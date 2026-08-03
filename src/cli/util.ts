@@ -35,6 +35,7 @@ Usage:
   pm brier <address|username> [--json]     Brier score from settled positions
   pm markout <address> [--fills N]         Execution quality vs market baseline
   pm mix <address> [--limit N]             Maker/taker split of recent fills
+  pm cashflow <address> [--days N]         On-chain cash-outs vs trade settlement
   pm markets [--limit N] [--active]        List Gamma markets (quick scan)
   pm help                                  Show this message
 

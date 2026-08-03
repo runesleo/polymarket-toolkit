@@ -1,5 +1,6 @@
 import { runActivity } from "./commands/activity.ts";
 import { runBrier } from "./commands/brier.ts";
+import { runCashflow } from "./commands/cashflow.ts";
 import { runLb } from "./commands/lb.ts";
 import { runLimits } from "./commands/limits.ts";
 import { runMarkets } from "./commands/markets.ts";
@@ -42,6 +43,9 @@ async function main(): Promise<void> {
       break;
     case "mix":
       await runMix(rest);
+      break;
+    case "cashflow":
+      await runCashflow(rest);
       break;
     case "scan":
       await runScan(rest);
