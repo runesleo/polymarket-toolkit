@@ -737,8 +737,22 @@ export function computeExecutionMix(
 
   const allTs = allFills.map((t) => t.timestamp);
   const takerTs = takerFills.map((t) => t.timestamp);
+  // Each page holds its own most-recent N rows, so each is complete from its own oldest
+  // row forward. The window has to start after both of those, or one side is missing
+  // rows the other has.
   const from = Math.max(Math.min(...allTs), takerTs.length > 0 ? Math.min(...takerTs) : -Infinity);
-  const to = Math.min(Math.max(...allTs), takerTs.length > 0 ? Math.max(...takerTs) : Infinity);
+  // The end is the unfiltered page's newest row, NOT the earlier of the two newest.
+  //
+  // Closing at the taker page's last row treats "no taker fills after this point" as
+  // missing data. It is the opposite: it is the finding. A wallet that stopped crossing
+  // the spread in January and has rested orders ever since has a taker page ending in
+  // January and an unfiltered page ending today — and clipping to January throws away
+  // every fill in between, which is all of the passive ones.
+  //
+  // The bias ran exactly backwards: the purer the market maker, the older and thinner
+  // its measured window. One profile came out at 82% passive off 11 fills in a window
+  // ending 2025-02-02, while the address was still on the leaderboard that same week.
+  const to = Math.max(...allTs);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return empty;
 
   const inWindow = (t: TradeRow): boolean => t.timestamp >= from && t.timestamp <= to;

@@ -29,6 +29,30 @@ test("maker ratio counts fills absent from the taker-only call", () => {
   assert.ok(Math.abs((mix.makerRatio ?? 0) - 1 / 3) < 1e-9);
 });
 
+test("a wallet that stopped crossing the spread stays measured to the present", () => {
+  // The failure this guards: closing the window at the taker page's newest row treats
+  // "no taker fills since January" as missing data, when it is the finding itself. Every
+  // passive fill after that point would be discarded — and for a pure market maker, that
+  // is nearly all of them.
+  const lastTakerFill = trade({ timestamp: 1_000 });
+  const passiveSince = [
+    trade({ timestamp: 5_000 }),
+    trade({ timestamp: 6_000 }),
+    trade({ timestamp: 7_000 }),
+  ];
+  const all = [lastTakerFill, ...passiveSince];
+  const taker = [lastTakerFill];
+
+  const mix = computeExecutionMix(all, taker);
+  assert.equal(mix.window?.to, 7_000, "window must run to the newest fill, not the newest taker fill");
+  assert.equal(mix.total, 4);
+  assert.equal(mix.taker, 1);
+  assert.equal(mix.maker, 3);
+  assert.equal(mix.makerRatio, 0.75);
+  // Clipping at the taker page would have given total=1, taker=1, makerRatio=0 —
+  // reporting the most passive wallet in the set as fully aggressive.
+});
+
 test("only the overlap is counted — the taker call reaches further back", () => {
   // A maker's taker-only page spans a much wider window because it has fewer rows to
   // fill. Counting both pages whole would divide two different spans.
@@ -42,13 +66,14 @@ test("only the overlap is counted — the taker call reaches further back", () =
   const taker = [old1, old2, recentTaker]; // window 100..900
 
   const mix = computeExecutionMix(all, taker);
-  assert.deepEqual(mix.window, { from: 900, to: 900, seconds: 0 });
-  // Only recentTaker sits inside the overlap; the two old taker fills are out of range.
-  assert.equal(mix.total, 1);
+  // Starts where both pages are complete (900), runs to the newest fill (1000).
+  assert.deepEqual(mix.window, { from: 900, to: 1000, seconds: 100 });
+  // The two old taker fills sit before the start and are excluded — counting the pages
+  // whole would have divided a 900-second taker span by a 100-second unfiltered one.
+  assert.equal(mix.total, 3);
   assert.equal(mix.taker, 1);
-  assert.equal(mix.maker, 0);
-  assert.equal(mix.makerRatio, 0);
-  // Counting the pages whole would have said 3 fills, 1 taker -> 67% maker. It does not.
+  assert.equal(mix.maker, 2);
+  assert.ok(Math.abs((mix.makerRatio ?? 0) - 2 / 3) < 1e-9);
 });
 
 test("a taker fill missing from the unfiltered call is flagged, not absorbed", () => {
