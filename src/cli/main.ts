@@ -3,6 +3,7 @@ import { runBrier } from "./commands/brier.ts";
 import { runLb } from "./commands/lb.ts";
 import { runLimits } from "./commands/limits.ts";
 import { runMarkets } from "./commands/markets.ts";
+import { runMarkout } from "./commands/markout.ts";
 import { runPnlCheck } from "./commands/pnl-check.ts";
 import { runProfile } from "./commands/profile.ts";
 import { runRedeem } from "./commands/redeem.ts";
@@ -34,6 +35,9 @@ async function main(): Promise<void> {
       break;
     case "markets":
       await runMarkets(rest);
+      break;
+    case "markout":
+      await runMarkout(rest);
       break;
     case "scan":
       await runScan(rest);

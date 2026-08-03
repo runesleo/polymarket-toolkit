@@ -9,6 +9,7 @@
 | I want to… | Start here |
 |------------|------------|
 | **Research an address** | `pm profile <addr>` · skills `polymarket-profile` / `polymarket-pnl` / `polymarket-brier` |
+| **Check execution quality** | `pm markout <addr>` — markout vs market baseline (adverse selection) |
 | **Scan markets & prices** | `pm markets` · [`examples/01,09,11`](./examples/) · [`docs/cookbook.md`](./docs/cookbook.md) |
 | **Wire my own data pipeline** | [`src/index.ts`](./src/index.ts) · cookbook · `examples/14` |
 | **Validation checklists** | [`docs/templates/`](./docs/templates/) — handoff · backtest · paper · live-gate · runbook |
@@ -56,10 +57,33 @@ Prefer `./bin/pm` from repo root (no install step). Or: `npm run pm -- profile �
 | `pm pnl-check` | LB snapshot + hints — not audit-grade PnL |
 | `pm limits` | Official API rate limit pacing |
 | `pm brier` | Brier score from settled positions (sample) |
+| `pm markout` | Execution quality — markout vs market baseline |
 | `pm redeem` | Read-only redeem watchdog JSON |
 | `pm markets` | Quick Gamma market list |
 
 Audit-grade PnL (Python): `python3 skills/polymarket-pnl/compute_precise_pnl.py --address …`
+
+### `pm markout` — is this address getting picked off?
+
+```bash
+./bin/pm markout 0x9a18f10966262d9be5d662754256380583fabb54 --fills 200
+```
+
+Markout is where a fill stands some seconds later: `(reference − fill) × direction`, in
+cents per share. Negative means the price walked away from you — adverse selection.
+
+Three things this command does that a hand-rolled version usually gets wrong:
+
+- **Passive fills are included.** `/trades?user=` behaves like `takerOnly=true` by
+  default, so a market maker's entire passive side is missing unless you ask for it.
+- **The reference is a windowed VWAP, not the next print.** Prints alternate between bid
+  and ask, and that bounce alone makes every SELL look good and every BUY look bad.
+- **Everything is measured against a baseline** — the same tokens over the same span,
+  minus this wallet. Levels drift; the excess is the part that means something.
+
+Read the excess column and the coverage column together. In short-dated markets a large
+`tau` leaves most fills with nothing ahead of them to be priced against, and the mean
+then describes the surviving handful rather than the trader.
 
 ## TypeScript library
 

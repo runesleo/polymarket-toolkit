@@ -476,6 +476,206 @@ export async function fetchActivityPages(
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Markout — execution quality / adverse selection
+ * ------------------------------------------------------------------ */
+
+export interface TradeRow {
+  proxyWallet: string;
+  side: "BUY" | "SELL";
+  asset: string;
+  conditionId: string;
+  size: number;
+  price: number;
+  timestamp: number;
+  title?: string;
+  outcome?: string;
+}
+
+/**
+ * Data API: a wallet's own fills.
+ *
+ * `takerOnly` defaults to FALSE here, unlike the upstream endpoint, whose default
+ * behaves like `takerOnly=true`. With the upstream default a market maker sees only
+ * the legs where it crossed the spread — the entire passive side silently disappears.
+ * Markout on taker-only fills measures the wrong population.
+ */
+export async function fetchUserTrades(
+  address: string,
+  options: { limit?: number; takerOnly?: boolean; offset?: number } = {},
+): Promise<TradeRow[]> {
+  const u = new URL(`${DATA_API_BASE}/trades`);
+  u.searchParams.set("user", address);
+  u.searchParams.set("takerOnly", String(options.takerOnly ?? false));
+  u.searchParams.set("limit", String(options.limit ?? 500));
+  if (options.offset) u.searchParams.set("offset", String(options.offset));
+  return await pmGetJson<TradeRow[]>(u);
+}
+
+/**
+ * Data API: every print in one market.
+ *
+ * Filter by `market=<conditionId>`, never `asset=<tokenId>` — the `asset` parameter is
+ * accepted and ignored, so it returns the whole book while looking like it filtered.
+ * Split by token client-side instead.
+ */
+export async function fetchMarketTrades(
+  conditionId: string,
+  options: { limit?: number } = {},
+): Promise<TradeRow[]> {
+  const u = new URL(`${DATA_API_BASE}/trades`);
+  u.searchParams.set("market", conditionId);
+  u.searchParams.set("limit", String(options.limit ?? 1000));
+  return await pmGetJson<TradeRow[]>(u);
+}
+
+export interface MarkoutBucket {
+  tau: number;
+  n: number;
+  meanCents: number;
+  medianCents: number;
+  weightedUsd: number;
+}
+
+export interface MarkoutTauResult {
+  tau: number;
+  mine: MarkoutBucket;
+  baseline: MarkoutBucket | null;
+  /** mine.meanCents - baseline.meanCents; null when no baseline. */
+  excessCents: number | null;
+  /** mine.n / totalFills — always report it; low coverage invalidates the mean. */
+  coverage: number;
+  byDirection: Record<"BUY" | "SELL", { mine: number | null; baseline: number | null }>;
+}
+
+type PriceSeries = Map<string, Array<[number, number, number]>>;
+
+function buildPriceSeries(prints: TradeRow[]): PriceSeries {
+  const series: PriceSeries = new Map();
+  for (const p of prints) {
+    let arr = series.get(p.asset);
+    if (!arr) series.set(p.asset, (arr = []));
+    arr.push([p.timestamp, p.price, p.size]);
+  }
+  for (const arr of series.values()) arr.sort((a, b) => a[0] - b[0]);
+  return series;
+}
+
+/**
+ * Size-weighted average price inside [lo, hi].
+ *
+ * A single "next print after t+tau" is the intuitive reference but a biased one: prints
+ * alternate between the bid and the ask, so a SELL tends to be followed by a buy print
+ * and a BUY by a sell print. That bounce alone makes SELL markout look positive and BUY
+ * negative with no information involved. Averaging over a window cancels it.
+ */
+function windowVwap(
+  arr: Array<[number, number, number]>,
+  lo: number,
+  hi: number,
+): number | null {
+  let num = 0;
+  let den = 0;
+  for (const [ts, price, size] of arr) {
+    if (ts < lo) continue;
+    if (ts > hi) break;
+    num += price * size;
+    den += size;
+  }
+  return den > 0 ? num / den : null;
+}
+
+function bucket(values: Array<{ mo: number; size: number }>, tau: number): MarkoutBucket {
+  if (values.length === 0) {
+    return { tau, n: 0, meanCents: 0, medianCents: 0, weightedUsd: 0 };
+  }
+  const mos = values.map((v) => v.mo).sort((a, b) => a - b);
+  const mean = mos.reduce((a, b) => a + b, 0) / mos.length;
+  const median = mos[Math.floor(mos.length / 2)] ?? 0;
+  return {
+    tau,
+    n: values.length,
+    meanCents: mean * 100,
+    medianCents: median * 100,
+    weightedUsd: values.reduce((a, v) => a + v.mo * v.size, 0),
+  };
+}
+
+/**
+ * Markout(tau) = (referencePrice(t + tau) - fillPrice) * direction, in cents per share.
+ * Negative means price moved against the fill afterwards — the classic adverse-selection
+ * signature. Passive market makers run negative markout by construction (they earn the
+ * spread and pay it back in markout), so the number that carries information is the
+ * excess over the market baseline, not the level.
+ *
+ * The baseline is every other participant's markout on the same tokens over the same
+ * span. It absorbs whatever drift is common to the market — which matters a lot in
+ * binary markets, where price converges to 0 or 1 and would otherwise be booked as skill.
+ */
+export function computeMarkout(
+  fills: TradeRow[],
+  prints: TradeRow[],
+  options: {
+    taus?: number[];
+    vwapHalfWindowSec?: number;
+    excludeAddress?: string;
+  } = {},
+): MarkoutTauResult[] {
+  const taus = options.taus ?? [10, 30, 60];
+  const halfWindow = options.vwapHalfWindowSec ?? 5;
+  const exclude = options.excludeAddress?.toLowerCase();
+  const series = buildPriceSeries(prints);
+
+  const markoutOf = (t: TradeRow, tau: number): number | null => {
+    const arr = series.get(t.asset);
+    if (!arr) return null;
+    const ref = windowVwap(arr, t.timestamp + tau - halfWindow, t.timestamp + tau + halfWindow);
+    if (ref === null) return null;
+    return (ref - t.price) * (t.side === "BUY" ? 1 : -1);
+  };
+
+  const others = exclude ? prints.filter((p) => p.proxyWallet.toLowerCase() !== exclude) : prints;
+
+  return taus.map((tau) => {
+    const mine: Array<{ mo: number; size: number }> = [];
+    const base: Array<{ mo: number; size: number }> = [];
+    const dir: Record<"BUY" | "SELL", { mine: number[]; base: number[] }> = {
+      BUY: { mine: [], base: [] },
+      SELL: { mine: [], base: [] },
+    };
+
+    for (const f of fills) {
+      const mo = markoutOf(f, tau);
+      if (mo === null) continue;
+      mine.push({ mo, size: f.size });
+      dir[f.side].mine.push(mo);
+    }
+    for (const p of others) {
+      const mo = markoutOf(p, tau);
+      if (mo === null) continue;
+      base.push({ mo, size: p.size });
+      dir[p.side].base.push(mo);
+    }
+
+    const mineBucket = bucket(mine, tau);
+    const baseBucket = base.length > 0 ? bucket(base, tau) : null;
+    const avg = (xs: number[]): number | null =>
+      xs.length > 0 ? (xs.reduce((a, b) => a + b, 0) / xs.length) * 100 : null;
+
+    return {
+      tau,
+      mine: mineBucket,
+      baseline: baseBucket,
+      excessCents: baseBucket ? mineBucket.meanCents - baseBucket.meanCents : null,
+      coverage: fills.length > 0 ? mineBucket.n / fills.length : 0,
+      byDirection: {
+        BUY: { mine: avg(dir.BUY.mine), baseline: avg(dir.BUY.base) },
+        SELL: { mine: avg(dir.SELL.mine), baseline: avg(dir.SELL.base) },
+      },
+    };
+  });
+}
+
 export {
   DEFAULT_BUILDER_CODE,
   maskBuilderCode,
