@@ -52,12 +52,23 @@ describe("tool argv building", () => {
     ]);
   });
 
+  it("pm_mix defaults to the full row limit (the overlap needs both pages deep)", () => {
+    assert.deepEqual(byName.pm_mix.buildArgv({ input: "0xabc123" }), [
+      "mix",
+      "0xabc123",
+      "--limit",
+      "500",
+      "--json",
+    ]);
+  });
+
   it("every tool only emits read-only pm subcommands", () => {
     const allowed = new Set([
       "profile",
       "activity",
       "brier",
       "markout",
+      "mix",
       "pnl-check",
       "scan",
       "updown",

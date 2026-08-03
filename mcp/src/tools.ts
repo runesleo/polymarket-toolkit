@@ -63,6 +63,16 @@ export const PM_TOOLS: PmTool[] = [
     buildArgv: (a) => ["brier", String(a.input), "--json"],
   },
   {
+    name: "pm_mix",
+    description:
+      "Execution style: what share of a wallet's recent fills were passive (maker) versus aggressive (taker). Counted over the overlap of two calls, since the two endpoints reach back different distances.",
+    schema: {
+      input: addressOrUsername,
+      limit: z.number().int().min(50).max(500).optional().describe("rows per call (default 500)"),
+    },
+    buildArgv: (a) => ["mix", String(a.input), "--limit", String(a.limit ?? 500), "--json"],
+  },
+  {
     name: "pm_markout",
     description:
       "Execution quality: markout at several horizons against a baseline of every other wallet trading the same tokens. Negative excess means the address's fills are adversely selected. Measures execution, not PnL — rebates and holding to resolution sit outside it.",

@@ -34,6 +34,7 @@ Usage:
   pm redeem <address> [low_watermark]      Redeem watchdog (read-only)
   pm brier <address|username> [--json]     Brier score from settled positions
   pm markout <address> [--fills N]         Execution quality vs market baseline
+  pm mix <address> [--limit N]             Maker/taker split of recent fills
   pm markets [--limit N] [--active]        List Gamma markets (quick scan)
   pm help                                  Show this message
 

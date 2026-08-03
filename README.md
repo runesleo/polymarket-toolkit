@@ -10,6 +10,7 @@
 |------------|------------|
 | **Research an address** | `pm profile <addr>` · skills `polymarket-profile` / `polymarket-pnl` / `polymarket-brier` |
 | **Check execution quality** | `pm markout <addr>` — markout vs market baseline (adverse selection) |
+| **Classify a trader** | `pm mix <addr>` — passive market maker or aggressive taker |
 | **Scan markets & prices** | `pm markets` · [`examples/01,09,11`](./examples/) · [`docs/cookbook.md`](./docs/cookbook.md) |
 | **Wire my own data pipeline** | [`src/index.ts`](./src/index.ts) · cookbook · `examples/14` |
 | **Validation checklists** | [`docs/templates/`](./docs/templates/) — handoff · backtest · paper · live-gate · runbook |
@@ -58,6 +59,7 @@ Prefer `./bin/pm` from repo root (no install step). Or: `npm run pm -- profile �
 | `pm limits` | Official API rate limit pacing |
 | `pm brier` | Brier score from settled positions (sample) |
 | `pm markout` | Execution quality — markout vs market baseline |
+| `pm mix` | Execution style — maker/taker split of recent fills |
 | `pm redeem` | Read-only redeem watchdog JSON |
 | `pm markets` | Quick Gamma market list |
 

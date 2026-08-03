@@ -490,6 +490,7 @@ export interface TradeRow {
   timestamp: number;
   title?: string;
   outcome?: string;
+  transactionHash?: string;
 }
 
 /**
@@ -682,6 +683,96 @@ export function computeMarkout(
       },
     };
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * Execution mix — how much of a wallet's flow is passive
+ * ------------------------------------------------------------------ */
+
+export interface ExecutionMix {
+  /** Fills inside the overlap window, from the unfiltered call. */
+  total: number;
+  maker: number;
+  taker: number;
+  /** maker / total, or null when the overlap holds nothing. */
+  makerRatio: number | null;
+  window: { from: number; to: number; seconds: number } | null;
+  /**
+   * The taker set must be contained in the unfiltered set. Anything outside it means
+   * the two calls disagree about the same span, and the ratio cannot be trusted.
+   */
+  orphanTakerFills: number;
+  /** Overlap sits flush against the row limit, so it reflects only the recent tail. */
+  truncated: boolean;
+}
+
+function tradeKey(t: TradeRow): string {
+  return `${t.transactionHash ?? ""}|${t.asset}|${t.side}|${t.size}|${t.timestamp}`;
+}
+
+/**
+ * Share of a wallet's fills that were passive.
+ *
+ * Counting the two endpoints against each other directly is wrong: each returns its own
+ * most-recent N rows, and the taker-only call reaches much further back because a maker
+ * has fewer taker fills to fill the page with — 45h against 22h on a live wallet. That
+ * comparison divides two different time windows. Only the overlap is comparable, so
+ * that is all this counts.
+ */
+export function computeExecutionMix(
+  allFills: TradeRow[],
+  takerFills: TradeRow[],
+  options: { rowLimit?: number } = {},
+): ExecutionMix {
+  const empty: ExecutionMix = {
+    total: 0,
+    maker: 0,
+    taker: 0,
+    makerRatio: null,
+    window: null,
+    orphanTakerFills: 0,
+    truncated: false,
+  };
+  if (allFills.length === 0) return empty;
+
+  const allTs = allFills.map((t) => t.timestamp);
+  const takerTs = takerFills.map((t) => t.timestamp);
+  const from = Math.max(Math.min(...allTs), takerTs.length > 0 ? Math.min(...takerTs) : -Infinity);
+  const to = Math.min(Math.max(...allTs), takerTs.length > 0 ? Math.max(...takerTs) : Infinity);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return empty;
+
+  const inWindow = (t: TradeRow): boolean => t.timestamp >= from && t.timestamp <= to;
+  const all = new Set(allFills.filter(inWindow).map(tradeKey));
+  const taker = new Set(takerFills.filter(inWindow).map(tradeKey));
+
+  let orphans = 0;
+  let takerInAll = 0;
+  for (const k of taker) {
+    if (all.has(k)) takerInAll += 1;
+    else orphans += 1;
+  }
+
+  const total = all.size;
+  const rowLimit = options.rowLimit ?? 500;
+  return {
+    total,
+    maker: total - takerInAll,
+    taker: takerInAll,
+    makerRatio: total > 0 ? (total - takerInAll) / total : null,
+    window: { from, to, seconds: to - from },
+    orphanTakerFills: orphans,
+    truncated: total >= rowLimit * 0.98,
+  };
+}
+
+/** Coarse label for the mix. Deliberately blunt — the ratio itself carries the detail. */
+export function labelExecutionMix(ratio: number | null): string {
+  if (ratio === null) return "unknown";
+  if (ratio >= 0.9) return "passive (market maker)";
+  if (ratio >= 0.6) return "mostly passive";
+  if (ratio > 0.4) return "mixed";
+  if (ratio > 0.1) return "mostly aggressive";
+  return "aggressive (taker)";
 }
 
 export {
