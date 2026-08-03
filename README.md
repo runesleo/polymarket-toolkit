@@ -490,6 +490,15 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 **API** (planned)
 - [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps
 
+## More from this workshop
+
+Full map: **[runesleo](https://github.com/runesleo/runesleo)** — all open-source projects and working systems.
+
+- [x-reader](https://github.com/runesleo/x-reader) — universal content reader MCP, 10+ platforms
+- [claude-code-workflow](https://github.com/runesleo/claude-code-workflow) — QuietHarness: shared AI working system for Claude Code / Codex / Cursor
+- [ai-health-vault](https://github.com/runesleo/ai-health-vault) — AI + Obsidian health management system
+- [claude-video-kit](https://github.com/runesleo/claude-video-kit) — Agent Skill + Remotion video pipeline
+
 ## About the author
 
 *Leo ([@runes_leo](https://x.com/runes_leo)) — AI × Crypto independent builder. Trading on [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit), building data and trading systems with Claude Code and Codex.*
