@@ -35,11 +35,29 @@ describe("tool argv building", () => {
     ]);
   });
 
+  it("pm_markout pins a fill count below the CLI default (each market costs a book fetch)", () => {
+    assert.deepEqual(byName.pm_markout.buildArgv({ input: "0xabc123" }), [
+      "markout",
+      "0xabc123",
+      "--fills",
+      "100",
+      "--json",
+    ]);
+    assert.deepEqual(byName.pm_markout.buildArgv({ input: "0xabc123", fills: 250 }), [
+      "markout",
+      "0xabc123",
+      "--fills",
+      "250",
+      "--json",
+    ]);
+  });
+
   it("every tool only emits read-only pm subcommands", () => {
     const allowed = new Set([
       "profile",
       "activity",
       "brier",
+      "markout",
       "pnl-check",
       "scan",
       "updown",

@@ -63,6 +63,25 @@ export const PM_TOOLS: PmTool[] = [
     buildArgv: (a) => ["brier", String(a.input), "--json"],
   },
   {
+    name: "pm_markout",
+    description:
+      "Execution quality: markout at several horizons against a baseline of every other wallet trading the same tokens. Negative excess means the address's fills are adversely selected. Measures execution, not PnL — rebates and holding to resolution sit outside it.",
+    schema: {
+      input: addressOrUsername,
+      fills: z
+        .number()
+        .int()
+        .min(20)
+        .max(300)
+        .optional()
+        .describe("how many recent fills to score (default 100)"),
+    },
+    // Each distinct market in the sample costs one more book fetch, so keep the default
+    // fill count well under the CLI's: a wide sample spans more markets and would run
+    // past the subprocess timeout.
+    buildArgv: (a) => ["markout", String(a.input), "--fills", String(a.fills ?? 100), "--json"],
+  },
+  {
     name: "pm_pnl_check",
     description:
       "Fee-inclusive PnL cross-check for a 0x address (cashflow-reconstructed vs leaderboard).",
