@@ -88,6 +88,18 @@ Read the excess column and the coverage column together. In short-dated markets 
 `tau` leaves most fills with nothing ahead of them to be priced against, and the mean
 then describes the surviving handful rather than the trader.
 
+**Why these three defaults exist.** I ran 15 strategies on Polymarket over half a year,
+and the ones that cost the most failed at measurement, not at strategy: the same logic
+made +77% on paper and lost −74% live; 18.3% of my own trade records were quietly wrong,
+two thirds of those being false wins; market-making went 0 for 10 while the platform
+shipped three fee formulas in a single night. Each flag above is one of those mistakes
+turned into a default, so it isn't paid for twice.
+
+The full write-up — 15 strategies, 5 deep pits, 14,000 words — is at
+[leolabs.me/pm-quant](https://leolabs.me/pm-quant) ($49). It comes with monthly supplement
+notes; the current one measures a ~300ms server-side floor on taker orders that no colo or
+private line removes, against 56ms for maker.
+
 ## TypeScript library
 
 Zero-dependency helpers in [`src/index.ts`](./src/index.ts). Run demos with Node 22+:
