@@ -2,6 +2,8 @@
 
 **For anyone who wants to research Polymarket on their own** — run the CLI yourself, or install skills for Claude / Cursor / OpenClaw and let AI run the tools. Read-only public APIs. No API keys. No signing.
 
+> **Nothing to install?** [**probpocket.com/lookup**](https://probpocket.com/lookup/?utm_source=toolkit&utm_content=readme-top) answers the same first question in a browser: paste an address, see lifetime PnL, what the wallet actually makes its money on, and how its leaderboard days compare with its real settled total. Free, no signup. Same public APIs as this CLI.
+
 [中文说明](./README.zh.md)
 
 ## Toolbox · pick a drawer

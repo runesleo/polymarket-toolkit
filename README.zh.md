@@ -2,6 +2,8 @@
 
 **面向想自己查 Polymarket 数据的人** — 会写代码直接跑 CLI；不会写代码，把 Skills 装进 Claude / Cursor / OpenClaw，让 AI 帮你跑。基于公开 API，只读，无需 API Key，无需签名。
 
+> **什么都不想装？** [**probpocket.com/lookup**](https://probpocket.com/lookup/?utm_source=toolkit&utm_content=readme-top-zh) 在浏览器里回答同一个问题：贴一个地址，看它的全时段盈亏、这个钱包到底靠什么赚钱、以及它上榜那些天的数字和真实结算差多少。免费，不用注册，用的是和本 CLI 相同的公开 API。
+
 [English README](./README.md)
 
 ---
