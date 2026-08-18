@@ -470,6 +470,10 @@ def fetch_activity_all_offset(
             "type": activity_type,
             "limit": PAGE_LIMIT,
             "offset": offset,
+            # Not cosmetic, and not safe to drop: MERGE and SPLIT return an
+            # empty list under the default DESC ordering and real rows under
+            # ASC. An empty list reads as "this wallet never merged", which on
+            # a split/merge wallet silently removes its largest cashflow.
             "sortDirection": "ASC",
         }
         try:
@@ -524,14 +528,41 @@ def fetch_activity_all(
     if activity_type == "TRADE":
         return fetch_activity_all_timestamp(client, address, activity_type, progress_cb=progress_cb)
     items, pagination_incomplete, hit_cap = fetch_activity_all_offset(client, address, activity_type, progress_cb=progress_cb)
-    if hit_cap:
-        print(
-            f"  ⚠️ {activity_type} passed the {ACTIVITY_OFFSET_CAP}-row offset cap, "
-            "re-fetching with timestamp pagination",
-            flush=True,
-        )
-        return fetch_activity_all_timestamp(client, address, activity_type, progress_cb=progress_cb)
-    return items, pagination_incomplete
+    if not hit_cap:
+        return items, pagination_incomplete
+
+    print(
+        f"  ⚠️ {activity_type} passed the {ACTIVITY_OFFSET_CAP}-row offset cap, "
+        "re-fetching with timestamp pagination",
+        flush=True,
+    )
+    cursor_items, cursor_incomplete = fetch_activity_all_timestamp(
+        client, address, activity_type, progress_cb=progress_cb
+    )
+    # The fallback is only allowed to improve on what we already have.
+    #
+    # The offset path sends sortDirection=ASC; the cursor path walks `end`
+    # backwards and so relies on the default DESC. For MERGE and SPLIT those
+    # two are not equivalent — DESC returns *nothing at all*. Measured
+    # 2026-08-18 on one wallet: type=MERGE with sortDirection=ASC returns rows
+    # back to 2020, the same query under DESC (with or without `end`) returns
+    # an empty list, while TRADE and REDEEM are unaffected either way.
+    #
+    # An empty list is indistinguishable from "this wallet never merged", and
+    # that wallet's MERGE total is eight figures. Silently swapping real rows
+    # for zero would be worse than the hard failure this fallback replaced, so
+    # a shorter result is read as "this path cannot see this type" and the
+    # capped-but-real rows are kept, flagged.
+    if len(cursor_items) >= len(items):
+        return cursor_items, cursor_incomplete
+
+    print(
+        f"  ⚠️ {activity_type} timestamp fallback returned fewer rows "
+        f"({len(cursor_items)} < {len(items)}); keeping the offset result and "
+        "marking it incomplete",
+        flush=True,
+    )
+    return items, True
 
 
 POSITIONS_OFFSET_CAP = 9500  # API cap is 10000, leave margin

@@ -127,27 +127,49 @@ class ActivityOffsetCapTest(unittest.TestCase):
         self.assertFalse(hit_cap)
         self.assertFalse(incomplete)
 
-    def test_hitting_the_cap_falls_back_to_timestamp_pagination(self):
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
+    def _fallback_returning(self, rows, client, activity_type="REDEEM"):
         called = {}
 
-        def fake_timestamp(_client, address, activity_type, progress_cb=None):
-            called["args"] = (address, activity_type)
-            return [{"usdcSize": "42"}], False
+        def fake_timestamp(_client, address, a_type, progress_cb=None):
+            called["args"] = (address, a_type)
+            return rows, False
 
         original = compute_precise_pnl.fetch_activity_all_timestamp
         compute_precise_pnl.fetch_activity_all_timestamp = fake_timestamp
         try:
-            items, incomplete = compute_precise_pnl.fetch_activity_all(client, "0xabc", "REDEEM")
+            result = compute_precise_pnl.fetch_activity_all(client, "0xabc", activity_type)
         finally:
             compute_precise_pnl.fetch_activity_all_timestamp = original
+        return result, called
+
+    def test_hitting_the_cap_falls_back_to_timestamp_pagination(self):
+        client = CappedClient(total_rows=CAP + 3 * PAGE)
+        complete = [{"usdcSize": "1"}] * (CAP + 3 * PAGE)
+        (items, incomplete), called = self._fallback_returning(complete, client)
 
         self.assertEqual(called.get("args"), ("0xabc", "REDEEM"))
-        self.assertEqual(items, [{"usdcSize": "42"}])
+        self.assertEqual(len(items), CAP + 3 * PAGE)
         self.assertFalse(
             incomplete,
-            "the cursor path is complete, so the truncation flag must not leak through",
+            "the cursor path is complete, so the short-result flag must not leak through",
         )
+
+    def test_a_shorter_fallback_never_replaces_real_rows(self):
+        # MERGE/SPLIT return an empty list under the cursor path's DESC
+        # ordering. Accepting that would read as "this wallet never merged" and
+        # silently drop its largest cashflow, so a shorter fallback must lose.
+        client = CappedClient(total_rows=CAP + 3 * PAGE)
+        (items, incomplete), _ = self._fallback_returning([], client, activity_type="MERGE")
+
+        self.assertGreater(len(items), 0, "empty fallback must not replace real rows")
+        self.assertTrue(incomplete, "keeping the capped rows must be flagged as incomplete")
+
+    def test_an_equal_length_fallback_is_accepted(self):
+        client = CappedClient(total_rows=CAP + 3 * PAGE)
+        offset_rows, _, _ = compute_precise_pnl.fetch_activity_all_offset(client, "0xabc", "REDEEM")
+        equal = [{"usdcSize": "9"}] * len(offset_rows)
+        (items, _), _ = self._fallback_returning(equal, CappedClient(total_rows=CAP + 3 * PAGE))
+        self.assertEqual(items, equal)
 
 
 if __name__ == "__main__":

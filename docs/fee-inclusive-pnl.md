@@ -70,6 +70,22 @@ wallet pay in fees".
 with the rate stepping 0.03 → 0.05 → 0.07 since. Reconciliations that passed
 before then are not evidence that they still pass.
 
+## ⚠️ `MERGE` and `SPLIT` need `sortDirection=ASC`
+
+Measured 2026-08-18, same wallet, same query, only the ordering changed:
+
+| type | default (DESC) | `sortDirection=ASC` |
+|---|---|---|
+| `MERGE` | **0 rows** | 2562 rows |
+| `SPLIT` | **0 rows** | 132 rows |
+| `REDEEM` | 10697 rows | 10697 rows |
+| `TRADE` | 69161 rows | 69161 rows |
+
+Under DESC those two types return an empty list — with or without `end` — which
+is indistinguishable from "this wallet never merged". On the wallet above that
+silently removes an eight-figure cashflow. `polymarket-pnl` always sends ASC for
+offset paging; if you are writing your own replay, send it too.
+
 ## The other big divergence: neg-risk `CONVERSION`
 
 If a wallet's gap is *far* larger than its fee total, check `type=CONVERSION`
