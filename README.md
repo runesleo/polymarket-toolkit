@@ -481,6 +481,7 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 **Market Intelligence**
 - [x] Market Scanner Lite — `pm scan` (24h volume + spread)
 - [x] Crypto updown fields — `pm updown` + docs/crypto-updown-price-source.md
+- [x] Tennis event live-score cross-check — `examples/22` + docs/tennis-livescore-source.md
 - [ ] Market Liquidity Gauge — Depth / maker concentration (deeper)
 - [ ] LP Reward Scanner — Incentive programs / APY estimate
 
