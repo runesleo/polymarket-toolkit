@@ -843,3 +843,292 @@ export {
   resolveBuilderCode,
   withBuilderCode,
 } from "./builder.ts";
+
+/* ------------------------------------------------------------------ *
+ * Fee basis — the fee is already in `/activity`, no chain reads needed
+ * ------------------------------------------------------------------ */
+
+/**
+ * One `/activity` TRADE row. `usdcSize` is *not* `size * price`.
+ *
+ * Measured 2026-08-18: the residual is the trading fee, and it fits the
+ * documented `rate x shares x p x (1-p)` to four decimals —
+ *
+ *   size 78.3784 @ 0.3700 -> usdcSize 29.9135 vs 29.0000, residual 0.9135
+ *   78.3784 x 0.37 x 0.63 = 18.269, and 0.9135 / 18.269 = 0.0500
+ *
+ * The fee is added to `usdcSize` on BUY and subtracted on SELL, which is why a
+ * cashflow replay comes out net of fees while Polymarket's own PnL does not.
+ */
+export interface ActivityTradeRow {
+  side?: string;
+  size?: number | string;
+  price?: number | string;
+  usdcSize?: number | string;
+  timestamp?: number;
+}
+
+export interface Quantiles {
+  median: number | null;
+  p10: number | null;
+  p90: number | null;
+  samples: number;
+}
+
+export interface FeeBasis {
+  fills: number;
+  /** Fee strictly above tolerance. A charged fill is a taker fill — makers are never charged. */
+  chargedFills: number;
+  /**
+   * Fee at zero. Maker OR a fee-exempt category — the API cannot tell those
+   * apart, so this deliberately is not called "maker".
+   */
+  zeroFeeFills: number;
+  /** Share of fills that were charged. `null` when there are no fills. */
+  chargedRatio: number | null;
+  buyFees: number;
+  sellFees: number;
+  totalFees: number;
+  /** `sum(size * price)` — fee-free notional. */
+  notional: number;
+  /** `totalFees / notional`. The cheapest single number for "how much of a taker is this wallet". */
+  feeRatio: number | null;
+  /** Directly measured, always meaningful: `fee / shares` over charged fills. */
+  feePerShare: Quantiles;
+  /**
+   * `fee / (shares * p * (1-p))`, over charged fills whose quotient lands in a
+   * plausible fee-rate band. Rows outside it are counted in `unmodeledFills`
+   * rather than averaged in — see the note there.
+   */
+  impliedRate: Quantiles;
+  /**
+   * Charged fills the `rate x shares x p x (1-p)` model does not explain.
+   *
+   * Measured 2026-08-18: one wallet fits the model at rate 0.0500 across the
+   * whole price range including p=0.0056 and p=0.9990. Another, trading the
+   * same period, pays about 1 cent per share at p=0.9990 — roughly 200x what
+   * the model predicts there, which looks like a per-share floor rather than a
+   * rate. That is unresolved, so it is surfaced as a count instead of being
+   * averaged into a single rate that would read as the platform's fee.
+   *
+   * `totalFees` is unaffected: it is measured, not modelled, and reconciles
+   * against Polymarket's own PnL within $0.02 on a 152-fill wallet.
+   */
+  unmodeledFills: number;
+  /**
+   * Fills whose residual has the wrong sign for a fee (BUY paying less than
+   * quoted, SELL receiving more). Zero across every wallet measured so far;
+   * a non-zero count means the residual is not purely fee and the totals
+   * should not be read as one.
+   */
+  wrongSignFills: number;
+  window: { from: number; to: number } | null;
+}
+
+/** Plausible band for the fee-rate model. Observed rates: 0.03, 0.04, 0.045, 0.05, 0.07. */
+const RATE_BAND_LO = 0.005;
+const RATE_BAND_HI = 0.2;
+
+const FEE_EPSILON = 1e-6;
+
+function toNum(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function quantile(sorted: number[], q: number): number | null {
+  if (sorted.length === 0) return null;
+  const i = (sorted.length - 1) * q;
+  const lo = Math.floor(i);
+  const hi = Math.ceil(i);
+  const a = sorted[lo] as number;
+  const b = sorted[hi] as number;
+  return lo === hi ? a : a + (b - a) * (i - lo);
+}
+
+/**
+ * Signed fee implied by one `/activity` TRADE row.
+ *
+ * A fee makes a BUY cost more and a SELL pay less, so the sign is not free
+ * information: a negative result means the residual is not a fee at all.
+ * Returns `null` when `side` is missing or unrecognised.
+ */
+export function impliedFeeForFill(row: ActivityTradeRow): number | null {
+  const side = String(row.side ?? "").toUpperCase();
+  if (side !== "BUY" && side !== "SELL") return null;
+  const raw = toNum(row.usdcSize) - toNum(row.size) * toNum(row.price);
+  return side === "BUY" ? raw : -raw;
+}
+
+/**
+ * Reverse the fee out of `/activity` TRADE rows.
+ *
+ * This is the cheap version of the on-chain method: no RPC, no receipt
+ * decoding, no credentials — one REST call gives per-fill fees.
+ *
+ * ⚠️ The test is one-directional. `fee > 0` proves the wallet was the taker on
+ * that fill, because makers are never charged. `fee == 0` proves only "maker
+ * leg OR fee-exempt category", so `zeroFeeFills` must not be reported as a
+ * maker count.
+ */
+export function computeFeeBasis(rows: ActivityTradeRow[]): FeeBasis {
+  const emptyQ: Quantiles = { median: null, p10: null, p90: null, samples: 0 };
+  const empty: FeeBasis = {
+    fills: 0,
+    chargedFills: 0,
+    zeroFeeFills: 0,
+    chargedRatio: null,
+    buyFees: 0,
+    sellFees: 0,
+    totalFees: 0,
+    notional: 0,
+    feeRatio: null,
+    feePerShare: emptyQ,
+    impliedRate: emptyQ,
+    unmodeledFills: 0,
+    wrongSignFills: 0,
+    window: null,
+  };
+  if (rows.length === 0) return empty;
+
+  let buyFees = 0;
+  let sellFees = 0;
+  let notional = 0;
+  let charged = 0;
+  let unmodeled = 0;
+  let wrongSign = 0;
+  const rates: number[] = [];
+  const perShare: number[] = [];
+  const stamps: number[] = [];
+
+  for (const r of rows) {
+    const size = toNum(r.size);
+    const price = toNum(r.price);
+    notional += size * price;
+    if (typeof r.timestamp === "number") stamps.push(r.timestamp);
+
+    const fee = impliedFeeForFill(r);
+    if (fee == null) continue;
+    if (fee < -FEE_EPSILON) {
+      wrongSign += 1;
+      continue;
+    }
+    if (fee <= FEE_EPSILON) continue;
+
+    charged += 1;
+    if (String(r.side).toUpperCase() === "SELL") sellFees += fee;
+    else buyFees += fee;
+    if (size > 0) perShare.push(fee / size);
+
+    // The denominator collapses at the extremes, where a wallet that pays a
+    // per-share floor produces an "implied rate" two orders of magnitude off.
+    // Those rows are counted, not averaged.
+    const denom = size * price * (1 - price);
+    const rate = denom > 1e-9 ? fee / denom : null;
+    if (rate != null && rate >= RATE_BAND_LO && rate <= RATE_BAND_HI) rates.push(rate);
+    else unmodeled += 1;
+  }
+
+  rates.sort((a, b) => a - b);
+  perShare.sort((a, b) => a - b);
+  const totalFees = buyFees + sellFees;
+  const quant = (v: number[]): Quantiles => ({
+    median: quantile(v, 0.5),
+    p10: quantile(v, 0.1),
+    p90: quantile(v, 0.9),
+    samples: v.length,
+  });
+
+  return {
+    fills: rows.length,
+    chargedFills: charged,
+    zeroFeeFills: rows.length - charged - wrongSign,
+    chargedRatio: charged / rows.length,
+    buyFees,
+    sellFees,
+    totalFees,
+    notional,
+    feeRatio: notional > 0 ? totalFees / notional : null,
+    feePerShare: quant(perShare),
+    impliedRate: quant(rates),
+    unmodeledFills: unmodeled,
+    wrongSignFills: wrongSign,
+    window: stamps.length ? { from: Math.min(...stamps), to: Math.max(...stamps) } : null,
+  };
+}
+
+/**
+ * Polymarket's own PnL is pre-fee and pre-rebate; a cashflow replay is neither.
+ *
+ *   official = replay + lifetime taker fees - maker rebates
+ *
+ * so the wallet's actual post-fee position is the inverse. Verified on four
+ * wallets 2026-08-18, predicting the gap before comparing: a heavy-taker wallet
+ * came in at a $0.84 residual against a $1,308.87 prediction.
+ *
+ * ⚠️ Only valid when the gap is fee-shaped. A wallet whose replay is far from
+ * this line is telling you something else is going on — neg-risk `CONVERSION`
+ * or `MERGE`/`SPLIT` accounting — not that the arithmetic is wrong.
+ */
+export function netAfterFees(
+  officialPnl: number,
+  totalFees: number,
+  makerRebates: number,
+): number {
+  return officialPnl - totalFees + makerRebates;
+}
+
+/* ------------------------------------------------------------------ *
+ * user-pnl — the official equity curve
+ * ------------------------------------------------------------------ */
+
+/** `interval` values the user-pnl host accepts. There is no `1y`. */
+export type UserPnlInterval = "max" | "all" | "1m" | "1w" | "1d" | "12h";
+/**
+ * `fidelity` is an enum, not a number of minutes. Passing `60` is rejected —
+ * with HTTP 200 and an object body, not a 4xx — so callers must check the shape.
+ */
+export type UserPnlFidelity = "1d" | "18h" | "12h" | "3h" | "1h";
+
+export interface UserPnlPoint {
+  t: number;
+  p: number;
+}
+
+export const USER_PNL_API_BASE = "https://user-pnl-api.polymarket.com";
+
+/**
+ * The time series behind Polymarket's own equity curve.
+ *
+ * `lb-api /profit` returns a single number per window, so it cannot draw a
+ * trend; this is the endpoint that can.
+ *
+ * ⚠️ Two things to know before comparing it to anything:
+ *  - It is the same **pre-fee, pre-rebate** basis as the leaderboard. A cashflow
+ *    replay will drift below it by the cumulative taker fees, and that drift
+ *    grows monotonically — which is how you tell it apart from open-position
+ *    mark drift, which oscillates.
+ *  - It is bucketed by `fidelity` while `lb-api` is realtime, so the two
+ *    official sources differ by a few hundred dollars at any instant.
+ *
+ * Throws if the host returns a non-array body, which is how it reports a bad
+ * `fidelity` while still saying 200.
+ */
+export async function fetchUserPnlSeries(
+  address: string,
+  options: { interval?: UserPnlInterval; fidelity?: UserPnlFidelity } = {},
+): Promise<UserPnlPoint[]> {
+  const u = new URL(`${USER_PNL_API_BASE}/user-pnl`);
+  u.searchParams.set("user_address", address);
+  u.searchParams.set("interval", options.interval ?? "all");
+  u.searchParams.set("fidelity", options.fidelity ?? "1d");
+  const body = await pmGetJson<unknown>(u);
+  if (!Array.isArray(body)) {
+    throw new Error(
+      `user-pnl returned a non-array body (HTTP 200). This is how it reports a rejected ` +
+        `filter — check that fidelity is one of 1d/18h/12h/3h/1h, not a minute count. ` +
+        `Body: ${JSON.stringify(body).slice(0, 200)}`,
+    );
+  }
+  return body as UserPnlPoint[];
+}
