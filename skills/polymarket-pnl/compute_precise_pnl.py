@@ -56,7 +56,13 @@ POSITIONS_API = f"{DATA_API}/positions"
 PAGE_LIMIT = 500
 REQUEST_DELAY = 0.2  # 200ms between requests (rate limit)
 REQUEST_TIMEOUT = 20
-ACTIVITY_OFFSET_CAP = 9500  # leave margin below undocumented 10k cap
+# /activity rejects offset > 5000 with a 400 — measured 2026-08-18, and it is a
+# cap on `offset` alone, not on offset+limit: offset=5000&limit=500 returns 200,
+# offset=5001&limit=499 returns 400, and offset=0&limit=5501 returns 200. The
+# previous 9500 assumed the 10k cap that /positions has; /positions really does
+# serve offset=9000, so the two endpoints differ and POSITIONS_OFFSET_CAP below
+# is correct as-is.
+ACTIVITY_OFFSET_CAP = 5000
 
 
 # ── Data classes ─────────────────────────────────────────────────────
@@ -450,14 +456,37 @@ def fetch_activity_all_offset(
     hit_cap = False
 
     while True:
+        # Checked before the request, not after the increment. The old order
+        # meant the first over-cap offset was still sent, and a 400 is in
+        # neither the retry set nor a fallback, so one wallet with >5000 rows of
+        # a single type failed the whole address instead of degrading.
+        if offset > ACTIVITY_OFFSET_CAP:
+            pagination_incomplete = True
+            hit_cap = True
+            break
+
         params = {
             "user": address,
             "type": activity_type,
             "limit": PAGE_LIMIT,
             "offset": offset,
+            # Not cosmetic, and not safe to drop: MERGE and SPLIT return an
+            # empty list under the default DESC ordering and real rows under
+            # ASC. An empty list reads as "this wallet never merged", which on
+            # a split/merge wallet silently removes its largest cashflow.
             "sortDirection": "ASC",
         }
-        resp = _fetch_with_retry(client, ACTIVITY_API, params)
+        try:
+            resp = _fetch_with_retry(client, ACTIVITY_API, params)
+        except httpx.HTTPStatusError as exc:
+            # Defence in depth: the cap is undocumented, so if it ever moves
+            # below our constant, take the same exit as reaching it rather than
+            # failing the address.
+            if exc.response.status_code != 400:
+                raise
+            pagination_incomplete = True
+            hit_cap = True
+            break
         records = resp.json()
         if progress_cb is not None:
             progress_cb({
@@ -476,12 +505,6 @@ def fetch_activity_all_offset(
             break
 
         offset += len(records)
-        if offset >= ACTIVITY_OFFSET_CAP:
-            pagination_incomplete = True
-            hit_cap = True
-            print(f"  ⚠️ {activity_type} offset {offset} hit API cap, result may be INCOMPLETE", flush=True)
-            break
-
         time.sleep(REQUEST_DELAY)
 
     return items, pagination_incomplete, hit_cap
@@ -493,11 +516,53 @@ def fetch_activity_all(
     activity_type: str,
     progress_cb: ProgressCallback | None = None,
 ) -> tuple[list[dict], bool]:
-    """Fetch all activity records with the safest pagination mode per type."""
+    """Fetch all activity records with the safest pagination mode per type.
+
+    Offset paging avoids same-second boundary loss, so it is preferred — but it
+    can only reach the first 5000 rows. Past that the timestamp cursor is the
+    only complete path, so reaching the cap re-walks the type from scratch
+    rather than returning a truncated total. Measured on a wallet whose REDEEM
+    history is 10697 rows: the offset path can see 5000 of them, the cursor path
+    returns all 10697.
+    """
     if activity_type == "TRADE":
         return fetch_activity_all_timestamp(client, address, activity_type, progress_cb=progress_cb)
-    items, pagination_incomplete, _ = fetch_activity_all_offset(client, address, activity_type, progress_cb=progress_cb)
-    return items, pagination_incomplete
+    items, pagination_incomplete, hit_cap = fetch_activity_all_offset(client, address, activity_type, progress_cb=progress_cb)
+    if not hit_cap:
+        return items, pagination_incomplete
+
+    print(
+        f"  ⚠️ {activity_type} passed the {ACTIVITY_OFFSET_CAP}-row offset cap, "
+        "re-fetching with timestamp pagination",
+        flush=True,
+    )
+    cursor_items, cursor_incomplete = fetch_activity_all_timestamp(
+        client, address, activity_type, progress_cb=progress_cb
+    )
+    # The fallback is only allowed to improve on what we already have.
+    #
+    # The offset path sends sortDirection=ASC; the cursor path walks `end`
+    # backwards and so relies on the default DESC. For MERGE and SPLIT those
+    # two are not equivalent — DESC returns *nothing at all*. Measured
+    # 2026-08-18 on one wallet: type=MERGE with sortDirection=ASC returns rows
+    # back to 2020, the same query under DESC (with or without `end`) returns
+    # an empty list, while TRADE and REDEEM are unaffected either way.
+    #
+    # An empty list is indistinguishable from "this wallet never merged", and
+    # that wallet's MERGE total is eight figures. Silently swapping real rows
+    # for zero would be worse than the hard failure this fallback replaced, so
+    # a shorter result is read as "this path cannot see this type" and the
+    # capped-but-real rows are kept, flagged.
+    if len(cursor_items) >= len(items):
+        return cursor_items, cursor_incomplete
+
+    print(
+        f"  ⚠️ {activity_type} timestamp fallback returned fewer rows "
+        f"({len(cursor_items)} < {len(items)}); keeping the offset result and "
+        "marking it incomplete",
+        flush=True,
+    )
+    return items, True
 
 
 POSITIONS_OFFSET_CAP = 9500  # API cap is 10000, leave margin

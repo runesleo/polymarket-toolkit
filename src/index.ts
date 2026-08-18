@@ -235,15 +235,40 @@ export function resolveRedeemMode(options: {
 /** Data API: one page of activity (optionally filtered by type / cursor `end`). */
 export async function fetchActivityPage(
   user: string,
-  options: { limit?: number; end?: number; type?: string } = {},
+  options: {
+    limit?: number;
+    end?: number;
+    type?: string;
+    offset?: number;
+    sortDirection?: "ASC" | "DESC";
+  } = {},
 ): Promise<unknown[]> {
   const u = new URL(`${DATA_API_BASE}/activity`);
   u.searchParams.set("user", user);
   u.searchParams.set("limit", String(options.limit ?? 500));
   if (options.end != null) u.searchParams.set("end", String(options.end));
   if (options.type) u.searchParams.set("type", options.type);
+  if (options.offset != null) u.searchParams.set("offset", String(options.offset));
+  if (options.sortDirection) u.searchParams.set("sortDirection", options.sortDirection);
   return pmGetJson<unknown[]>(u);
 }
+
+/**
+ * Activity types that come back empty under the API's default DESC ordering.
+ *
+ * Measured 2026-08-18 on one wallet, ordering the only thing changed:
+ *   MERGE   DESC 0 rows   ASC 2562 rows
+ *   SPLIT   DESC 0 rows   ASC  132 rows
+ *   REDEEM  DESC 10697    ASC 10697
+ *   TRADE   DESC 69161    ASC 69161
+ *
+ * An empty array is indistinguishable from "this wallet never merged", which is
+ * exactly the wrong answer to hand a split/merge readiness check.
+ */
+export const ACTIVITY_TYPES_NEEDING_ASC = new Set(["MERGE", "SPLIT"]);
+
+/** The API rejects offset > 5000 with a 400. Measured 2026-08-18; independent of `limit`. */
+export const ACTIVITY_OFFSET_CAP = 5000;
 
 /** Gamma: events for a slug (array). */
 export async function fetchGammaEventsBySlug(slug: string): Promise<unknown[]> {
@@ -436,28 +461,51 @@ export async function fetchActivityPages(
   let sawStaleCursor = false;
   let pagesFetched = 0;
 
-  for (let page = 0; page < maxPages; page++) {
-    const batch = (await fetchActivityPage(user, { limit, end, type: options.type })) as ActivityRow[];
-    pagesFetched += 1;
-    if (!batch.length) break;
+  // MERGE and SPLIT return nothing at all under the default DESC ordering, so
+  // they have to be asked for in ASC — and the `end` cursor below walks
+  // backwards, which ASC does not support. Those types page by offset instead,
+  // bounded by the API's own 5000 cap.
+  const needsAsc = options.type != null && ACTIVITY_TYPES_NEEDING_ASC.has(options.type);
 
-    const fp = fingerprintActivityPage(batch);
-    if (lastFingerprint && fp === lastFingerprint) {
-      sawDuplicatePage = true;
-      break;
+  if (needsAsc) {
+    let offset = 0;
+    for (let page = 0; page < maxPages && offset <= ACTIVITY_OFFSET_CAP; page++) {
+      const batch = (await fetchActivityPage(user, {
+        limit,
+        type: options.type,
+        offset,
+        sortDirection: "ASC",
+      })) as ActivityRow[];
+      pagesFetched += 1;
+      if (!batch.length) break;
+      collected.push(...batch);
+      if (batch.length < limit) break;
+      offset += batch.length;
     }
-    lastFingerprint = fp;
-    collected.push(...batch);
+  } else {
+    for (let page = 0; page < maxPages; page++) {
+      const batch = (await fetchActivityPage(user, { limit, end, type: options.type })) as ActivityRow[];
+      pagesFetched += 1;
+      if (!batch.length) break;
 
-    if (batch.length < limit) break;
+      const fp = fingerprintActivityPage(batch);
+      if (lastFingerprint && fp === lastFingerprint) {
+        sawDuplicatePage = true;
+        break;
+      }
+      lastFingerprint = fp;
+      collected.push(...batch);
 
-    const lastTs = batch[batch.length - 1]?.timestamp;
-    if (lastTs == null) break;
-    if (end !== undefined && end === lastTs) {
-      sawStaleCursor = true;
-      break;
+      if (batch.length < limit) break;
+
+      const lastTs = batch[batch.length - 1]?.timestamp;
+      if (lastTs == null) break;
+      if (end !== undefined && end === lastTs) {
+        sawStaleCursor = true;
+        break;
+      }
+      end = lastTs;
     }
-    end = lastTs;
   }
 
   const warnings = analyzeActivityPaginationWarnings({
