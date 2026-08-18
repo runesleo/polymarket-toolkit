@@ -32,8 +32,14 @@ export async function runScan(argv: string[]): Promise<void> {
   console.log(`Market scan · top ${ranked.length} by 24h volume (min $${minVolume})\n`);
   for (const m of ranked) {
     const spread = m.spread != null ? `${(m.spread * 100).toFixed(2)}%` : "n/a";
+    // A raw spread means nothing without the market's own tick: 1.00% is the
+    // floor on a 0.01-tick market and ten ticks wide on a 0.001-tick one.
+    const ticks =
+      m.spreadTicks != null
+        ? ` (${m.spreadTicks} tick${m.spreadTicks === 1 ? "" : "s"} @ ${m.tickSize})`
+        : "";
     console.log(
-      `  $${m.volume24hr.toLocaleString()} vol · spread ${spread} · ${m.question.slice(0, 55)}`,
+      `  $${m.volume24hr.toLocaleString()} vol · spread ${spread}${ticks} · ${m.question.slice(0, 55)}`,
     );
     console.log(`    slug: ${m.slug}`);
   }

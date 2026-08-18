@@ -60,11 +60,38 @@ Prefer `./bin/pm` from repo root (no install step). Or: `npm run pm -- profile �
 | `pm limits` | Official API rate limit pacing |
 | `pm brier` | Brier score from settled positions (sample) |
 | `pm markout` | Execution quality — markout vs market baseline |
-| `pm mix` | Execution style — maker/taker split of recent fills |
+| `pm mix` | Execution style — maker/taker split, cross-checked against fees |
+| `pm fees` | Lifetime taker fees from `/activity` · pre-fee → net PnL |
 | `pm redeem` | Read-only redeem watchdog JSON |
 | `pm markets` | Quick Gamma market list |
 
 Audit-grade PnL (Python): `python3 skills/polymarket-pnl/compute_precise_pnl.py --address …`
+
+### `pm fees` — why your number never matches the profile
+
+```bash
+./bin/pm fees 0xYourProxy
+```
+
+> **Polymarket's own PnL — profile, `lb-api`, the `user-pnl` curve — is *pre-fee*.
+> A cashflow replay is *post-fee*. `gap ≈ lifetime taker fees − maker rebates`.**
+
+The fee is already in `/activity`: `usdcSize` is **not** `size × price`, and the
+residual is what you were charged. That means lifetime fees, per-fill taker
+proof, and the pre-fee → net conversion come from one REST call — no RPC, no
+receipt decoding, no credentials.
+
+Verified by predicting the gap before comparing, on four wallets: a heavy-taker
+wallet landed at a **$0.84 residual against a $1,308.87 prediction**, and a pure
+maker matched the official number to **$0.40**.
+
+⚠️ The taker test is one-directional. `fee > 0` proves you were the taker —
+makers are never charged. `fee == 0` means maker **or** fee-exempt category, so
+it is reported as an upper bound on passive share, never as a maker count.
+
+⚠️ Fees are recent. The earliest on record here is late June 2026, rate stepping
+0.03 → 0.05 → 0.07. Any reconciliation that passed before then proves nothing
+about today.
 
 ### `pm markout` — is this address getting picked off?
 
