@@ -13,7 +13,9 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "pm": "node --experimental-strip-types src/cli/main.ts"
+    "pm": "node --experimental-strip-types src/cli/main.ts",
+    "generate:ai-discovery": "node scripts/generate-ai-discovery.mjs",
+    "check:ai-discovery": "node scripts/generate-ai-discovery.mjs --check && node --experimental-strip-types --test tests/ai_discovery_contract.test.ts"
   },
   "exports": {
     ".": "./src/index.ts"
