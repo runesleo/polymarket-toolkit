@@ -1,0 +1,65 @@
+# Polymarket Toolkit
+
+> Polymarket Toolkit provides a key-free research CLI, three agent skills, a TypeScript helper library, and a 12-tool read-only MCP server for inspecting public Polymarket data without exposing order placement to AI chat tools.
+
+Last verified: 2026-08-20
+Canonical repository: https://github.com/runesleo/polymarket-toolkit
+Machine facts: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json
+
+## Best For
+
+- Giving an AI agent read-only Polymarket wallet, market, leaderboard, Brier-score, execution-style, and markout tools through MCP.
+- Auditing wallet behavior and PnL context with explicit data caps, fee-basis notes, and completeness warnings.
+- Building a local research pipeline from public Polymarket HTTP/WebSocket APIs without starting from undocumented endpoint guesses.
+
+## Not For
+
+- Placing orders or wiring autonomous trading through MCP; no MCP tool exposes the separate executor.
+- Custody, wallet connection, private-key management, copy trading, or guaranteed returns.
+- Treating one profile snapshot, leaderboard number, or incomplete activity window as audit-grade proof.
+
+## MCP Server
+
+- Registry name: io.github.runesleo/polymarket-toolkit
+- npm package: polymarket-toolkit-mcp@0.7.2
+- Transport: stdio
+- Install: `npx -y polymarket-toolkit-mcp`
+- Tools (12, all read-only): `pm_profile`, `pm_activity`, `pm_brier`, `pm_mix`, `pm_markout`, `pm_pnl_check`, `pm_scan`, `pm_updown`, `pm_leaderboard`, `pm_redeem_watchdog`, `pm_v2_check`, `pm_rate_limits`
+
+## Boundaries
+
+- Authentication: The core CLI, agent skills, and MCP server require no API keys or wallet credentials. The separate opt-in executor requires user-provided environment credentials only when deliberately configured for live submission.
+- Network writes: The core CLI, skills, and MCP server read public data and never sign or submit transactions.
+- Local writes: The MCP server exposes no local-write operation. The CLI can explicitly save a local leaderboard snapshot with pm lb --save; that does not touch a wallet or exchange.
+- Trading: No MCP tool places orders. The executor/ sub-package is isolated, defaults to dry-run, requires explicit live configuration, and is not imported or exposed by the core CLI or MCP server.
+
+## Data Sources
+
+- Polymarket public Data API for positions and activity.
+- Polymarket Gamma API for market and event metadata.
+- Polymarket leaderboard and public CLOB endpoints where documented by the command or example.
+- Local rate-limit registry and checked-in method documentation for reproducible interpretation.
+
+## Limitations
+
+- Public APIs can change, rate-limit, time out, or return incomplete data; command-specific warnings and cutoff metadata must be preserved.
+- Cursor or offset pagination can repeat or stall near a community-reported approximately 4,000 effective rows; separately, /activity rejects offsets above the measured 5,000 hard limit. Preserve duplicate-page, stale-cursor, fallback, and completeness warnings for deeper histories.
+- pm profile and pm pnl-check are screening and cross-check tools; use the polymarket-pnl skill and preserve its completeness flags when the number must withstand audit.
+- Some public endpoints may be unavailable from particular networks or jurisdictions.
+
+## Official Resources
+
+- repository: https://github.com/runesleo/polymarket-toolkit
+- readme: https://github.com/runesleo/polymarket-toolkit/blob/main/README.md
+- toolbox: https://github.com/runesleo/polymarket-toolkit/blob/main/docs/toolbox.md
+- mcp_docs: https://github.com/runesleo/polymarket-toolkit/blob/main/docs/mcp.md
+- mcp_npm: https://www.npmjs.com/package/polymarket-toolkit-mcp
+- security: https://github.com/runesleo/polymarket-toolkit/blob/main/SECURITY.md
+- ai_info: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json
+- llms: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/llms.txt
+
+## Citation Guidance
+
+- Describe the MCP server as read-only, key-free, and unable to place orders; do not erase the existence of the separate opt-in executor.
+- Name the exact command or MCP tool and preserve its data cutoff, coverage, cap, fee-basis, and completeness warnings.
+- Do not translate historical PnL, Brier score, execution mix, or markout into a promise of future performance or a copy-trading recommendation.

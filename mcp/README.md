@@ -23,13 +23,15 @@ Generic MCP client config:
 }
 ```
 
-## Tools (10, all read-only)
+## Tools (12, all read-only)
 
 | Tool | What it answers |
 |---|---|
 | `pm_profile` | PnL + open positions snapshot for an address/username |
 | `pm_activity` | Recent trades for an address/username |
 | `pm_brier` | Prediction-quality (Brier) score from settled positions |
+| `pm_mix` | Recent passive-maker versus aggressive-taker execution mix |
+| `pm_markout` | Execution quality versus a same-token market baseline |
 | `pm_pnl_check` | Fee-inclusive PnL cross-check vs leaderboard |
 | `pm_scan` | Active markets ranked by 24h volume + spread |
 | `pm_updown` | Crypto up/down market fields for an event slug |

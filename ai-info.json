@@ -1,0 +1,125 @@
+{
+  "generated_from": "content/ai-identity.json",
+  "schema_version": "1.0",
+  "id": "polymarket-toolkit",
+  "identity_version": "1.0",
+  "last_verified_at": "2026-08-20",
+  "source_revision": "26ccbcf8de83a4ee1a86a98f2dc19a3a76cef521",
+  "name": "Polymarket Toolkit",
+  "canonical_url": "https://github.com/runesleo/polymarket-toolkit",
+  "ai_info_url": "https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json",
+  "llms_url": "https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/llms.txt",
+  "category": "Read-only Polymarket research toolkit and MCP server",
+  "one_sentence_description": "Polymarket Toolkit provides a key-free research CLI, three agent skills, a TypeScript helper library, and a 12-tool read-only MCP server for inspecting public Polymarket data without exposing order placement to AI chat tools.",
+  "maintainer": {
+    "name": "Leo",
+    "handle": "@runes_leo",
+    "website": "https://leolabs.me/",
+    "x": "https://x.com/runes_leo",
+    "github": "https://github.com/runesleo"
+  },
+  "best_for": [
+    "Giving an AI agent read-only Polymarket wallet, market, leaderboard, Brier-score, execution-style, and markout tools through MCP.",
+    "Auditing wallet behavior and PnL context with explicit data caps, fee-basis notes, and completeness warnings.",
+    "Building a local research pipeline from public Polymarket HTTP/WebSocket APIs without starting from undocumented endpoint guesses."
+  ],
+  "not_for": [
+    "Placing orders or wiring autonomous trading through MCP; no MCP tool exposes the separate executor.",
+    "Custody, wallet connection, private-key management, copy trading, or guaranteed returns.",
+    "Treating one profile snapshot, leaderboard number, or incomplete activity window as audit-grade proof."
+  ],
+  "capabilities": {
+    "core_cli": {
+      "description": "Local CLI for wallet profiles, activity, markets, leaderboards, Brier scores, fee context, cashflow, execution mix, markout, and diagnostics.",
+      "entrypoint": "./bin/pm",
+      "docs": "https://github.com/runesleo/polymarket-toolkit/blob/main/docs/toolbox.md"
+    },
+    "mcp": {
+      "registry_name": "io.github.runesleo/polymarket-toolkit",
+      "npm_package": "polymarket-toolkit-mcp",
+      "package_version": "0.7.2",
+      "transport": "stdio",
+      "install_command": "npx -y polymarket-toolkit-mcp",
+      "tools": [
+        "pm_profile",
+        "pm_activity",
+        "pm_brier",
+        "pm_mix",
+        "pm_markout",
+        "pm_pnl_check",
+        "pm_scan",
+        "pm_updown",
+        "pm_leaderboard",
+        "pm_redeem_watchdog",
+        "pm_v2_check",
+        "pm_rate_limits"
+      ],
+      "docs": "https://github.com/runesleo/polymarket-toolkit/blob/main/docs/mcp.md"
+    },
+    "agent_skills": {
+      "names": [
+        "polymarket-profile",
+        "polymarket-brier",
+        "polymarket-pnl"
+      ],
+      "docs": "https://github.com/runesleo/polymarket-toolkit/tree/main/skills"
+    },
+    "typescript_library": {
+      "description": "Zero-runtime-dependency public API helpers and reusable research primitives.",
+      "entrypoint": "src/index.ts"
+    }
+  },
+  "boundaries": {
+    "authentication": "The core CLI, agent skills, and MCP server require no API keys or wallet credentials. The separate opt-in executor requires user-provided environment credentials only when deliberately configured for live submission.",
+    "network_write": "The core CLI, skills, and MCP server read public data and never sign or submit transactions.",
+    "local_write": "The MCP server exposes no local-write operation. The CLI can explicitly save a local leaderboard snapshot with pm lb --save; that does not touch a wallet or exchange.",
+    "trading": "No MCP tool places orders. The executor/ sub-package is isolated, defaults to dry-run, requires explicit live configuration, and is not imported or exposed by the core CLI or MCP server."
+  },
+  "data_sources": [
+    "Polymarket public Data API for positions and activity.",
+    "Polymarket Gamma API for market and event metadata.",
+    "Polymarket leaderboard and public CLOB endpoints where documented by the command or example.",
+    "Local rate-limit registry and checked-in method documentation for reproducible interpretation."
+  ],
+  "limitations": [
+    "Public APIs can change, rate-limit, time out, or return incomplete data; command-specific warnings and cutoff metadata must be preserved.",
+    "Cursor or offset pagination can repeat or stall near a community-reported approximately 4,000 effective rows; separately, /activity rejects offsets above the measured 5,000 hard limit. Preserve duplicate-page, stale-cursor, fallback, and completeness warnings for deeper histories.",
+    "pm profile and pm pnl-check are screening and cross-check tools; use the polymarket-pnl skill and preserve its completeness flags when the number must withstand audit.",
+    "Some public endpoints may be unavailable from particular networks or jurisdictions."
+  ],
+  "pricing": {
+    "model": "free_open_source",
+    "license": "MIT",
+    "details": "The repository and MCP package are free and open source. Referral links, when present, are disclosed in the surrounding documentation."
+  },
+  "related_entities": [
+    {
+      "name": "Leo Labs",
+      "relationship": "maintained_by",
+      "url": "https://leolabs.me/",
+      "ai_info_url": "https://leolabs.me/ai-info.json"
+    },
+    {
+      "name": "ProbPocket",
+      "relationship": "browser_counterpart",
+      "url": "https://probpocket.com/",
+      "ai_info_url": "https://probpocket.com/ai-info.json"
+    }
+  ],
+  "official_urls": {
+    "repository": "https://github.com/runesleo/polymarket-toolkit",
+    "readme": "https://github.com/runesleo/polymarket-toolkit/blob/main/README.md",
+    "toolbox": "https://github.com/runesleo/polymarket-toolkit/blob/main/docs/toolbox.md",
+    "mcp_docs": "https://github.com/runesleo/polymarket-toolkit/blob/main/docs/mcp.md",
+    "mcp_npm": "https://www.npmjs.com/package/polymarket-toolkit-mcp",
+    "security": "https://github.com/runesleo/polymarket-toolkit/blob/main/SECURITY.md",
+    "ai_info": "https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json",
+    "llms": "https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/llms.txt"
+  },
+  "citation_guidance": [
+    "Describe the MCP server as read-only, key-free, and unable to place orders; do not erase the existence of the separate opt-in executor.",
+    "Name the exact command or MCP tool and preserve its data cutoff, coverage, cap, fee-basis, and completeness warnings.",
+    "Do not translate historical PnL, Brier score, execution mix, or markout into a promise of future performance or a copy-trading recommendation."
+  ],
+  "is_accessible_for_free": true
+}
