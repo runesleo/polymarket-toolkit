@@ -6,6 +6,8 @@
 
 [中文说明](./README.zh.md)
 
+Machine-readable product facts: [ai-info.json](./ai-info.json) · [llms.txt](./llms.txt). Both are generated from `content/ai-identity.json`; `npm run check:ai-discovery` fails on tool, package-version, or output drift.
+
 ## Toolbox · pick a drawer
 
 | I want to… | Start here |
@@ -179,7 +181,7 @@ Building your own order executor? Start from the opt-in [`executor/`](./executor
 
 ### v0.7 — MCP server for AI agents
 
-- **`mcp/`** — [Model Context Protocol](https://modelcontextprotocol.io) server exposing 10 read-only tools (`pm_profile`, `pm_activity`, `pm_brier`, `pm_scan`, `pm_updown`, `pm_leaderboard`, `pm_redeem_watchdog`, `pm_pnl_check`, `pm_v2_check`, `pm_rate_limits`) — [docs/mcp.md](./docs/mcp.md)
+- **`mcp/`** — [Model Context Protocol](https://modelcontextprotocol.io) server exposing 12 read-only tools (`pm_profile`, `pm_activity`, `pm_brier`, `pm_mix`, `pm_markout`, `pm_pnl_check`, `pm_scan`, `pm_updown`, `pm_leaderboard`, `pm_redeem_watchdog`, `pm_v2_check`, `pm_rate_limits`) — [docs/mcp.md](./docs/mcp.md)
 - The CLI is the contract: every tool shells out to `pm`, so the server is exactly as read-only as the CLI; inputs are allowlist-validated before reaching argv
 - Order placement is deliberately **not** exposed over MCP — the executor stays a separate, human-wired opt-in
 

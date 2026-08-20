@@ -6,6 +6,8 @@
 
 [English README](./README.md)
 
+机器可读产品事实：[ai-info.json](./ai-info.json) · [llms.txt](./llms.txt)。两者都由 `content/ai-identity.json` 生成；`npm run check:ai-discovery` 会拦截工具清单、包版本和生成文件漂移。
+
 ---
 
 ## 工具箱 · 按抽屉选

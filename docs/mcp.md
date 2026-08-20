@@ -1,4 +1,4 @@
-# MCP server (v0.7) — toolkit tools for AI agents
+# MCP server (package v0.7.2) — toolkit tools for AI agents
 
 The [`mcp/`](../mcp) sub-package exposes the toolkit's **read-only** CLI as
 [Model Context Protocol](https://modelcontextprotocol.io) tools, so Claude, Codex, Cursor, or any
@@ -34,13 +34,15 @@ Generic MCP client config:
 }
 ```
 
-## Tools
+## Tools (12, all read-only)
 
 | Tool | Args | Backing CLI |
 |---|---|---|
 | `pm_profile` | address/username | `pm profile <x> --json` |
 | `pm_activity` | address/username, limit? | `pm activity <x> --json` |
 | `pm_brier` | address/username | `pm brier <x> --json` |
+| `pm_mix` | address/username, limit? | `pm mix <x> --json` |
+| `pm_markout` | address/username, fills? | `pm markout <x> --json` |
 | `pm_pnl_check` | 0x address | `pm pnl-check <x> --json` |
 | `pm_scan` | — | `pm scan` |
 | `pm_updown` | event slug | `pm updown <slug> --json` |

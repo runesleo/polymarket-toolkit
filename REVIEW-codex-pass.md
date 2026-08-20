@@ -18,7 +18,7 @@ None.
 
 - `mcp/package.json` marks `dist/server.js` executable after every build and pins publication to `https://registry.npmjs.org/`.
 - `mcp/tests/package-bin.test.ts` verifies the Node shebang, local executable bits, packed tarball mode `0755`, and official registry configuration.
-- A clean tarball installation completed MCP `initialize` and `tools/list`, returning the expected 10 read-only tools.
+- A clean tarball installation completed MCP `initialize` and `tools/list`, returning the expected 10 read-only tools for reviewed commit `83dd79d`. The current catalogue later expanded to 12 with `pm_mix` and `pm_markout`; this line remains a dated review result, not the current product count.
 - `Dockerfile` installs the exact official package `polymarket-toolkit-mcp@0.7.2` rather than the unrelated root npm package.
 - `glama.json` uses the official schema and assigns maintenance to `runesleo`.
 - Root tests passed 25/25, MCP tests passed 12/12, and both TypeScript checks passed.
