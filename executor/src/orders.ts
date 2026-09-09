@@ -24,6 +24,12 @@ export interface BuiltLimitOrder extends LimitOrderInput {
 
 export const DEFAULT_MAX_NOTIONAL_USD = 10;
 
+/**
+ * Unified @polymarket/client requires GTD expiry to be at least 3 minutes out.
+ * Keep the local guard aligned so dry-run and live reject the same stale orders.
+ */
+export const GTD_MIN_BUFFER_SECONDS = 180;
+
 export function buildLimitOrder(
   input: LimitOrderInput,
   orderType: ExecutorOrderType = "GTC",
@@ -46,7 +52,7 @@ export function buildLimitOrder(
     if (
       !input.expiration ||
       !Number.isInteger(input.expiration) ||
-      input.expiration <= nowSeconds + GTD_MIN_BUFFER_SECONDS
+      input.expiration < nowSeconds + GTD_MIN_BUFFER_SECONDS
     ) {
       throw new Error(
         "executor: GTD orders require an integer unix-seconds expiration at least " +
@@ -56,8 +62,6 @@ export function buildLimitOrder(
   }
   return { ...input, orderType, notionalUsd: input.price * input.size };
 }
-
-export const GTD_MIN_BUFFER_SECONDS = 60;
 
 export function resolveMaxNotionalUsd(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.EXECUTOR_MAX_USD?.trim();

@@ -1,0 +1,45 @@
+name: Executor migration CI
+
+on:
+  push:
+    branches:
+      - 'chore/polymarket-client-migration-20260909'
+    paths:
+      - 'executor/**'
+      - '.github/workflows/executor-migration-ci.yml'
+  pull_request:
+    paths:
+      - 'executor/**'
+      - '.github/workflows/executor-migration-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  executor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: executor/package-lock.json
+
+      - name: Install
+        working-directory: executor
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: executor
+        run: npm test
+
+      - name: Typecheck
+        working-directory: executor
+        run: npm run typecheck
+
+      - name: Dry-run builder attribution
+        working-directory: executor
+        run: npm run dry-run
