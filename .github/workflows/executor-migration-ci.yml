@@ -1,0 +1,44 @@
+name: Executor migration CI
+
+on:
+  pull_request:
+    paths:
+      - 'executor/**'
+      - '.github/workflows/executor-migration-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  executor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install migration dependencies and refresh lockfile in runner
+        working-directory: executor
+        run: npm install --ignore-scripts
+
+      - name: Unit tests
+        working-directory: executor
+        run: npm test
+
+      - name: Typecheck
+        working-directory: executor
+        run: npm run typecheck
+
+      - name: Dry-run builder attribution
+        working-directory: executor
+        run: npm run dry-run
+
+      - name: Upload refreshed executor lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-package-lock
+          path: executor/package-lock.json
+          if-no-files-found: error
