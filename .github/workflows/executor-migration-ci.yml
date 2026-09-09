@@ -1,6 +1,12 @@
 name: Executor migration CI
 
 on:
+  push:
+    branches:
+      - 'chore/polymarket-client-migration-20260909'
+    paths:
+      - 'executor/**'
+      - '.github/workflows/executor-migration-ci.yml'
   pull_request:
     paths:
       - 'executor/**'
