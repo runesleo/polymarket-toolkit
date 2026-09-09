@@ -1,12 +1,18 @@
 /**
- * Executor façade. The raw ClobClient is intentionally NOT exposed: every network
+ * Executor façade. The raw SDK client is intentionally NOT exposed: every network
  * mutation must pass through the EXECUTOR_LIVE gate, the recomputed notional cap,
- * and console redaction (the underlying client logs auth headers on HTTP errors).
+ * builder-attribution resolution, and console redaction.
  *
- * Builder code resolution (default / env override / opt-out) lives in the core:
- * ../../src/builder.ts. It is resolved once at construction and reported verbatim
- * in dry-run payloads, so what you preview is what a live order would carry.
+ * Unified SDK migration notes:
+ * - Uses @polymarket/client instead of @polymarket/clob-client-v2.
+ * - Builder attribution is attached per order via builderCode.
+ * - Existing Ethers v5 wallet material is adapted with @polymarket/client/ethers-v5.
+ * - Dry-run remains the default; no SDK network mutation occurs unless EXECUTOR_LIVE=1.
  */
+
+import { createSecureClient, OrderSide } from "@polymarket/client";
+import { signerFrom } from "@polymarket/client/ethers-v5";
+import { ethers } from "ethers-v5";
 
 import { maskBuilderCode, resolveBuilderCode } from "../../src/builder.ts";
 import { assertPrivateKeyShape, loadCredentials, type ExecutorCredentials } from "./env.ts";
@@ -17,13 +23,23 @@ import {
   makeDryRunPayload,
   type BuiltLimitOrder,
   type DryRunPayload,
+  type ExecutorSide,
 } from "./orders.ts";
 import { withRedactedConsole } from "./redact.ts";
 
-/** Minimal surface the executor needs from @polymarket/clob-client-v2. */
+export interface RawLimitOrderRequest {
+  assetId: string;
+  price: number;
+  side: ExecutorSide;
+  size: number;
+  expiration?: number;
+  builderCode?: string;
+}
+
+/** Minimal mutation surface the executor needs from the unified SDK. */
 export interface RawOrderClient {
-  createAndPostOrder(args: unknown, options: unknown, orderType: unknown): Promise<unknown>;
-  cancelOrder(payload: { orderID: string }): Promise<unknown>;
+  placeLimitOrder(request: RawLimitOrderRequest): Promise<unknown>;
+  cancelOrder(payload: { orderId: string }): Promise<unknown>;
 }
 
 export type PostLimitOrderResult =
@@ -57,35 +73,46 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
 
   let raw: RawOrderClient;
   let secrets: string[] = [];
-  let side: typeof import("@polymarket/clob-client-v2").Side | undefined;
-  let orderTypeEnum: typeof import("@polymarket/clob-client-v2").OrderType | undefined;
 
   if (options.rawClient) {
     raw = options.rawClient;
   } else {
     const creds = options.credentials ?? loadCredentials();
     assertPrivateKeyShape(creds.privateKey);
-    const [{ Wallet }, clob] = await Promise.all([
-      import("@ethersproject/wallet"),
-      import("@polymarket/clob-client-v2"),
-    ]);
-    const signer = new Wallet(creds.privateKey);
-    side = clob.Side;
-    orderTypeEnum = clob.OrderType;
+
+    const wallet = new ethers.Wallet(creds.privateKey);
+    const secureClient = await createSecureClient({
+      wallet: creds.funderAddress ?? wallet.address,
+      signer: signerFrom(wallet),
+      // The unified SDK validates these at runtime. Existing executor env names are
+      // preserved so migration does not force operators to rotate credentials.
+      credentials: {
+        key: creds.apiKey as never,
+        secret: creds.apiSecret,
+        passphrase: creds.apiPassphrase,
+      },
+    });
+
     secrets = [creds.privateKey, creds.apiKey, creds.apiSecret, creds.apiPassphrase];
-    raw = new clob.ClobClient({
-      host: creds.host,
-      chain: clob.Chain.POLYGON,
-      signer: signer as any,
-      creds: { key: creds.apiKey, secret: creds.apiSecret, passphrase: creds.apiPassphrase },
-      signatureType: creds.signatureType as any,
-      funderAddress: creds.funderAddress ?? signer.address,
-      builderConfig: builderCode ? { builderCode } : undefined,
-    }) as unknown as RawOrderClient;
+    raw = {
+      async placeLimitOrder(request: RawLimitOrderRequest): Promise<unknown> {
+        return secureClient.placeLimitOrder({
+          assetId: request.assetId,
+          price: request.price,
+          side: request.side === "BUY" ? OrderSide.BUY : OrderSide.SELL,
+          size: request.size,
+          ...(request.expiration !== undefined ? { expiration: request.expiration } : {}),
+          ...(request.builderCode ? { builderCode: request.builderCode } : {}),
+        });
+      },
+      async cancelOrder(payload: { orderId: string }): Promise<unknown> {
+        return secureClient.cancelOrder({ orderId: payload.orderId });
+      },
+    };
 
     if (!options.quiet) {
       console.log(
-        `[executor] ready sigType=${creds.signatureType} builder=${
+        `[executor] unified client ready legacySigType=${creds.signatureType} builder=${
           builderCode ? `on (${maskBuilderCode(builderCode)})` : "off"
         }`,
       );
@@ -122,22 +149,19 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
       if (!isLiveEnabled()) {
         return makeDryRunPayload(validated, builderCode);
       }
-      const args = {
-        tokenID: validated.tokenID,
+
+      const request: RawLimitOrderRequest = {
+        assetId: validated.tokenID,
         price: validated.price,
-        side: validated.side === "BUY" ? (side?.BUY ?? "BUY") : (side?.SELL ?? "SELL"),
+        side: validated.side,
         size: validated.size,
         ...(validated.orderType === "GTD" && validated.expiration
           ? { expiration: validated.expiration }
           : {}),
+        ...(builderCode ? { builderCode } : {}),
       };
-      const type =
-        validated.orderType === "GTD"
-          ? (orderTypeEnum?.GTD ?? "GTD")
-          : (orderTypeEnum?.GTC ?? "GTC");
-      const response = await withRedactedConsole(secrets, () =>
-        raw.createAndPostOrder(args, undefined, type),
-      );
+
+      const response = await withRedactedConsole(secrets, () => raw.placeLimitOrder(request));
       return { mode: "live", order: validated, response };
     },
 
@@ -145,7 +169,7 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
       if (!isLiveEnabled()) {
         return { mode: "dry-run", orderID, note: "Set EXECUTOR_LIVE=1 to cancel for real." };
       }
-      const response = await withRedactedConsole(secrets, () => raw.cancelOrder({ orderID }));
+      const response = await withRedactedConsole(secrets, () => raw.cancelOrder({ orderId: orderID }));
       return { mode: "live", orderID, response };
     },
   };
