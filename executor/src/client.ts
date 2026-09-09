@@ -8,6 +8,8 @@
  * - Builder attribution is attached per order via builderCode.
  * - Existing Ethers v5 wallet material is adapted with @polymarket/client/ethers-v5.
  * - Dry-run remains the default; no SDK network mutation occurs unless EXECUTOR_LIVE=1.
+ * - The injected RawOrderClient seam intentionally keeps its legacy method names so
+ *   the pre-migration safety tests keep exercising the same mutation boundary.
  */
 
 import { createSecureClient, OrderSide } from "@polymarket/client";
@@ -27,7 +29,7 @@ import {
 } from "./orders.ts";
 import { withRedactedConsole } from "./redact.ts";
 
-export interface RawLimitOrderRequest {
+export interface UnifiedLimitOrderRequest {
   assetId: string;
   price: number;
   side: ExecutorSide;
@@ -36,10 +38,13 @@ export interface RawLimitOrderRequest {
   builderCode?: string;
 }
 
-/** Minimal mutation surface the executor needs from the unified SDK. */
+/**
+ * Stable test seam. These legacy-shaped method names are internal only; the real
+ * implementation adapts them to @polymarket/client below.
+ */
 export interface RawOrderClient {
-  placeLimitOrder(request: RawLimitOrderRequest): Promise<unknown>;
-  cancelOrder(payload: { orderId: string }): Promise<unknown>;
+  createAndPostOrder(args: unknown, options: unknown, orderType: unknown): Promise<unknown>;
+  cancelOrder(payload: { orderID: string }): Promise<unknown>;
 }
 
 export type PostLimitOrderResult =
@@ -95,7 +100,8 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
 
     secrets = [creds.privateKey, creds.apiKey, creds.apiSecret, creds.apiPassphrase];
     raw = {
-      async placeLimitOrder(request: RawLimitOrderRequest): Promise<unknown> {
+      async createAndPostOrder(args: unknown): Promise<unknown> {
+        const request = args as UnifiedLimitOrderRequest;
         return secureClient.placeLimitOrder({
           assetId: request.assetId,
           price: request.price,
@@ -105,8 +111,8 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
           ...(request.builderCode ? { builderCode: request.builderCode } : {}),
         });
       },
-      async cancelOrder(payload: { orderId: string }): Promise<unknown> {
-        return secureClient.cancelOrder({ orderId: payload.orderId });
+      async cancelOrder(payload: { orderID: string }): Promise<unknown> {
+        return secureClient.cancelOrder({ orderId: payload.orderID });
       },
     };
 
@@ -150,7 +156,7 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
         return makeDryRunPayload(validated, builderCode);
       }
 
-      const request: RawLimitOrderRequest = {
+      const request: UnifiedLimitOrderRequest = {
         assetId: validated.tokenID,
         price: validated.price,
         side: validated.side,
@@ -161,7 +167,11 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
         ...(builderCode ? { builderCode } : {}),
       };
 
-      const response = await withRedactedConsole(secrets, () => raw.placeLimitOrder(request));
+      // orderType is retained at this seam for test compatibility; the unified SDK
+      // derives GTC/GTD from the optional expiration on the adapted request.
+      const response = await withRedactedConsole(secrets, () =>
+        raw.createAndPostOrder(request, undefined, validated.orderType),
+      );
       return { mode: "live", order: validated, response };
     },
 
@@ -169,7 +179,7 @@ export async function createExecutor(options: CreateExecutorOptions = {}): Promi
       if (!isLiveEnabled()) {
         return { mode: "dry-run", orderID, note: "Set EXECUTOR_LIVE=1 to cancel for real." };
       }
-      const response = await withRedactedConsole(secrets, () => raw.cancelOrder({ orderId: orderID }));
+      const response = await withRedactedConsole(secrets, () => raw.cancelOrder({ orderID }));
       return { mode: "live", orderID, response };
     },
   };
