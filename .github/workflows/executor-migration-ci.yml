@@ -14,23 +14,23 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   executor:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: 'chore/polymarket-client-migration-20260909'
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: executor/package-lock.json
 
-      - name: Install migration dependencies and refresh lockfile in runner
+      - name: Install
         working-directory: executor
-        run: npm install --ignore-scripts
+        run: npm ci
 
       - name: Unit tests
         working-directory: executor
@@ -43,22 +43,3 @@ jobs:
       - name: Dry-run builder attribution
         working-directory: executor
         run: npm run dry-run
-
-      - name: Upload refreshed executor lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: executor-package-lock
-          path: executor/package-lock.json
-          if-no-files-found: error
-
-      - name: Commit refreshed executor lockfile
-        run: |
-          if git diff --quiet -- executor/package-lock.json; then
-            echo "executor/package-lock.json already current"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add executor/package-lock.json
-          git commit -m "chore(executor): refresh package lock"
-          git push origin HEAD:chore/polymarket-client-migration-20260909
