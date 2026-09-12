@@ -510,7 +510,6 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 **Market Intelligence**
 - [x] Market Scanner Lite — `pm scan` (24h volume + spread)
 - [x] Crypto updown fields — `pm updown` + docs/crypto-updown-price-source.md
-- [x] Tennis event live-score cross-check — `examples/22` + docs/tennis-livescore-source.md
 - [ ] Market Liquidity Gauge — Depth / maker concentration (deeper)
 - [ ] LP Reward Scanner — Incentive programs / APY estimate
 
@@ -533,6 +532,12 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 
 **API** (planned)
 - [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps
+
+## Community / vendor-authored examples
+
+Contributed examples that lean on a third-party data source the contributor operates. They are read-only, opt-in, and **not** part of the core roadmap above — judge each on its disclosure.
+
+- Tennis event live-score cross-check — `examples/23-tennis-event-livescore.ts` + [docs/tennis-livescore-source.md](./docs/tennis-livescore-source.md). **Vendor disclosure:** the live score comes from the [Live Tennis API](https://livetennisapi.com), which the contributor ([@bensynapse](https://github.com/bensynapse)) runs. The overlay is off unless `LIVETENNIS_API_KEY` is set, fails on its own without touching the Gamma output, and is never a resolution source.
 
 ## More from this workshop
 

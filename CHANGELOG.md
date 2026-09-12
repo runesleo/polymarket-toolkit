@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- `examples/22-tennis-event-livescore.ts` + `docs/tennis-livescore-source.md`: read-only cross-check of a Polymarket tennis event's Gamma resolution inputs against an independent live score (Live Tennis API free tier, opt-in via `LIVETENNIS_API_KEY`).
+- `examples/23-tennis-event-livescore.ts` + `docs/tennis-livescore-source.md`: read-only cross-check of a Polymarket tennis event's Gamma resolution inputs against an independent live score (Live Tennis API free tier, opt-in via `LIVETENNIS_API_KEY`; vendor-authored). The keyed overlay fails independently of the Gamma read (one `[live-tennis] overlay unavailable` line, exit 0); break-point derivation and surname matching live in `src/tennis-livescore.ts` with tests in `tests/tennis_livescore.test.ts`.
 - Glama metadata and a root Docker entrypoint pinned to the official `polymarket-toolkit-mcp@0.7.2` package.
 - Regression coverage for the Docker package selection, maintainer metadata, official npm registry, and packed executable mode.
 

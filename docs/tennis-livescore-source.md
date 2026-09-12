@@ -10,11 +10,11 @@
 
 ```bash
 # Pass a tennis event slug (find active slugs on polymarket.com or from your scanner)
-npx tsx examples/22-tennis-event-livescore.ts <event-slug>
+npx tsx examples/23-tennis-event-livescore.ts <event-slug>
 
 # Optional independent overlay — free key: https://livetennisapi.com/subscribe/free
 export LIVETENNIS_API_KEY="your-free-key"
-npx tsx examples/22-tennis-event-livescore.ts <event-slug>
+npx tsx examples/23-tennis-event-livescore.ts <event-slug>
 ```
 
 ## What to look at
@@ -31,14 +31,24 @@ npx tsx examples/22-tennis-event-livescore.ts <event-slug>
 
 The live side is derived from the Live Tennis API **free** tier (`GET /matches?status=live`): live match list + score, at 30 req/min and 100 req/day — enough for a develop-and-test or ~15-minute-cadence check, **not** continuous fast polling. History, market prices and win-probability are paid tiers.
 
-**Break point** is derived the way the feed defines it: the *receiver* is at AD, or the receiver is at 40 while the server is at 0/15/30 — never in a tiebreak, and never when server or points are null.
+**Break point** is derived the way the feed defines it: the *receiver* is at AD, or the receiver is at 40 while the server is at 0/15/30 — never in a tiebreak, and never when server or points are null. The derivation and the surname matching live in [`src/tennis-livescore.ts`](../src/tennis-livescore.ts) (pure functions, covered by `tests/tennis_livescore.test.ts`).
+
+## When the overlay is unavailable
+
+The keyed overlay fails on its own. An unreachable API, a non-2xx status, invalid JSON, or a body whose `data` is not an array prints exactly one line —
+
+```
+[live-tennis] overlay unavailable: <reason>
+```
+
+— below the Gamma output, which is left intact, and the process still exits 0. `LIVETENNIS_API_BASE` overrides the API origin (default `https://api.livetennisapi.com/api/public/v1`) if you want to point the overlay at a stub or watch that path fire.
 
 Always cross-check **official resolution criteria** on the market page.
 
 ## Common pitfalls
 
 1. **Score lag** — the market price hasn't caught up to a break/set already decided on court.
-2. **Name matching** — the example matches a live match to the event by both player surnames; ambiguous names (same surname) can mis-match, so confirm the players.
+2. **Name matching** — a live match is picked only when **both** player surnames appear in the event title as whole words (multi-word and hyphenated surnames included; `Lee` never matches `Leech`), and only when exactly one live match qualifies. Two players with the same surname are still ambiguous unless the title carries an initial (`M. Zverev`), so confirm the players.
 3. **Retirement / walkover** — `event_status` can settle a match without a "normal" final; a naive price read misses it.
 4. **Free-tier cadence** — 100 req/day is not a fast poller; don't build a tight loop on the free key.
 
