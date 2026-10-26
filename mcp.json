@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "polymarket-toolkit": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "polymarket-toolkit-mcp@0.7.2"
+      ]
+    }
+  }
+}

@@ -10,6 +10,13 @@
 
 ---
 
+## 作为插件安装
+
+- **Claude Code**（2.1.275 及以上）：`/plugin install polymarket-toolkit --marketplace runesleo/x-reader`
+- **Codex**：先 `codex plugin marketplace add runesleo/x-reader`，再 `codex plugin add polymarket-toolkit@runesleo`
+
+`runesleo` 插件市场里还有 Leo 的其他工具，见 [runesleo/x-reader](https://github.com/runesleo/x-reader)。
+
 ## 工具箱 · 按抽屉选
 
 | 我想… | 从这里开始 |
