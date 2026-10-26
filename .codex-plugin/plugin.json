@@ -1,0 +1,35 @@
+{
+  "name": "polymarket-toolkit",
+  "version": "0.7.2",
+  "description": "Read-only Polymarket research for AI agents: wallet profiles, precise PnL, Brier scores and market scans from public APIs. No keys, no orders.",
+  "author": {
+    "name": "Leo",
+    "url": "https://github.com/runesleo"
+  },
+  "homepage": "https://github.com/runesleo/polymarket-toolkit",
+  "repository": "https://github.com/runesleo/polymarket-toolkit",
+  "license": "MIT",
+  "keywords": [
+    "polymarket",
+    "prediction-markets",
+    "pnl",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "polymarket-toolkit",
+    "shortDescription": "Read-only Polymarket wallet and market research",
+    "longDescription": "Read-only Polymarket research for AI agents: wallet profiles, precise PnL, Brier scores and market scans from public APIs. No keys, no orders.",
+    "developerName": "Leo",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Profile this Polymarket address: 0x…",
+      "What does this wallet actually make its money on?"
+    ],
+    "websiteURL": "https://github.com/runesleo/polymarket-toolkit"
+  },
+  "mcpServers": "./mcp.json"
+}

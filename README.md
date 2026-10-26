@@ -8,6 +8,13 @@
 
 Machine-readable product facts: [ai-info.json](./ai-info.json) · [llms.txt](./llms.txt). Both are generated from `content/ai-identity.json`; `npm run check:ai-discovery` fails on tool, package-version, or output drift.
 
+## Install as a plugin
+
+- **Claude Code** (2.1.275 or later): `/plugin install polymarket-toolkit --marketplace runesleo/x-reader`
+- **Codex**: `codex plugin marketplace add runesleo/x-reader`, then `codex plugin add polymarket-toolkit@runesleo`
+
+The `runesleo` marketplace also lists Leo's other tools; see [runesleo/x-reader](https://github.com/runesleo/x-reader).
+
 ## Toolbox · pick a drawer
 
 | I want to… | Start here |
