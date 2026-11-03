@@ -540,6 +540,28 @@ Also: [fee-inclusive-pnl.md](./docs/fee-inclusive-pnl.md) · full index: [toolbo
 **API** (planned)
 - [ ] REST API for all tools above — integrate Polymarket intelligence into your own apps
 
+## Data and network access
+
+The CLI, MCP server, and skills run on your machine and only read public data. There is no telemetry, and nothing is sent to the author's servers. They need no API keys and read no credentials.
+
+When you look up an address or a market, requests go only to these places:
+
+| What | Where it goes |
+|---|---|
+| Profit, volume, and leaderboard rankings | `lb-api.polymarket.com` |
+| Positions, activity, and trades | `data-api.polymarket.com` |
+| Market and event metadata | `gamma-api.polymarket.com` |
+| Order books and prices | `clob.polymarket.com` |
+| Official PnL curve (TypeScript library) | `user-pnl-api.polymarket.com` |
+| Live order book stream (TypeScript library and examples) | `wss://ws-subscriptions-clob.polymarket.com` |
+| On-chain pUSD balance and block times (`pm cashflow`) | A public Polygon RPC, `polygon.gateway.tenderly.co` by default, or the URL you pass with `--rpc` |
+
+Installing the plugin starts the MCP server with `npx`, which downloads the pinned `polymarket-toolkit-mcp` package and its dependencies from the npm registry. The `polymarket-pnl` skill needs `httpx`, which `pip` downloads from PyPI.
+
+The opt-in [`executor/`](./executor) package is the only part that uses keys. The plugin, skills, and MCP server never load it. If you run it yourself, it reads your keys from `EXECUTOR_*` environment variables and sends orders to `clob.polymarket.com` only when `EXECUTOR_LIVE=1`. Those orders carry the author's public builder code unless you override it or turn it off (see [builder attribution](./docs/builder-attribution.md)).
+
+Stored only on your machine: leaderboard snapshots you save with `pm lb --save` (`.pm-toolkit/lb-snapshots/` in the current directory; the MCP server never saves them), and the `polymarket-pnl` output file (`precise_pnl.jsonl` in the current directory, or the path you pass with `--output`).
+
 ## More from this workshop
 
 Full map: **[runesleo](https://github.com/runesleo/runesleo)** — all open-source projects and working systems.
