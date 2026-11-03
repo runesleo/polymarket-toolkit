@@ -9,6 +9,7 @@
   "homepage": "https://github.com/runesleo/polymarket-toolkit",
   "repository": "https://github.com/runesleo/polymarket-toolkit",
   "license": "MIT",
+  "privacyPolicyUrl": "https://github.com/runesleo/polymarket-toolkit#data-and-network-access",
   "keywords": [
     "polymarket",
     "prediction-markets",

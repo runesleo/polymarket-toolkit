@@ -196,6 +196,30 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 
 ---
 
+## 数据与网络访问
+
+CLI、MCP server 和 skills 都在你自己的电脑上运行，只读取公开数据。没有遥测，不会把任何数据发给作者的服务器。不需要 API key，也不读取任何凭证。
+
+查询地址或市场时，请求只会发往下面这些地方：
+
+| 内容 | 发往哪里 |
+|---|---|
+| 盈亏、成交量、排行榜排名 | `lb-api.polymarket.com` |
+| 持仓、活动记录、成交 | `data-api.polymarket.com` |
+| 市场和事件信息 | `gamma-api.polymarket.com` |
+| 订单簿和价格 | `clob.polymarket.com` |
+| 官方 PnL 曲线（TypeScript 库） | `user-pnl-api.polymarket.com` |
+| 实时订单簿推送（TypeScript 库和示例） | `wss://ws-subscriptions-clob.polymarket.com` |
+| 链上 pUSD 余额和区块时间（`pm cashflow`） | 公共 Polygon RPC，默认 `polygon.gateway.tenderly.co`，也可以用 `--rpc` 换成你自己的 |
+
+安装插件时，MCP server 通过 `npx` 启动，会从 npm registry 下载固定版本的 `polymarket-toolkit-mcp` 及其依赖。`polymarket-pnl` skill 需要 `httpx`，由 `pip` 从 PyPI 下载。
+
+只有可选的 [`executor/`](./executor) 子包会用到密钥，插件、skills 和 MCP server 都不会加载它。如果你自己运行它，它从 `EXECUTOR_*` 环境变量读取你的密钥，并且只在 `EXECUTOR_LIVE=1` 时把订单发到 `clob.polymarket.com`。这些订单默认带作者公开的 builder code，可以覆盖成你自己的，也可以关闭（见 [builder 归因说明](./docs/builder-attribution.md)）。
+
+只保存在你本机的内容：用 `pm lb --save` 保存的排行榜快照（当前目录下的 `.pm-toolkit/lb-snapshots/`，MCP server 不会保存），以及 `polymarket-pnl` 的输出文件（默认是当前目录下的 `precise_pnl.jsonl`，可用 `--output` 指定路径）。
+
+---
+
 ## 关于作者
 
 *Leo ([@runes_leo](https://x.com/runes_leo)) — AI × Crypto 独立 builder。在 [Polymarket](https://polymarket.com/?r=githuball&via=runes-leo&utm_source=github&utm_content=polymarket-toolkit) 交易，用 Claude Code 与 Codex 做数据与交易系统。*
