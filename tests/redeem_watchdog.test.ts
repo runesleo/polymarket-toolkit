@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DATA_API_BASE,
+  DATA_API_V2_BASE,
   fetchRedeemablePositionsPage,
   resolveRedeemMode,
   summarizeRedeemablePositions,
@@ -91,26 +91,53 @@ test("resolveRedeemMode only returns watchdog or low_watermark — no active lab
   assert.equal(resolveRedeemMode({ mode: "always", lowWatermark: 10 }), "low_watermark");
 });
 
-test("fetchRedeemablePositionsPage builds the correct Data API URL with redeemable=true", async (t) => {
+test("fetchRedeemablePositionsPage asks /v2/positions for status=REDEEMABLE and returns v1-named rows", async (t) => {
   // Use node:test built-in mock.method so the original is auto-restored at
   // test exit (no manual finally), and parallel tests in the same file
   // cannot race on globalThis.fetch.
+  const v2Row = (i: number) => ({
+    proxy_wallet: "0xabc",
+    token_id: `tok${i}`,
+    condition_id: `0xc${i}`,
+    current_size: 10,
+    avg_price: 0.4,
+    current_value: i % 2 ? 0 : 10,
+    status: "REDEEMABLE",
+    redeemable: true,
+    slug: `market-${i}`,
+  });
   const fetchMock = t.mock.method(globalThis, "fetch", async () => {
-    return new Response(JSON.stringify([]), {
+    const data = Array.from({ length: 150 }, (_, i) => v2Row(i));
+    return new Response(JSON.stringify({ data, pagination: { has_more: false, next_cursor: null } }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   });
 
-  await fetchRedeemablePositionsPage("0xabc", { limit: 50, offset: 100 });
+  // v2 has no offset: rows 100..149 are read past, not requested by offset.
+  const rows = (await fetchRedeemablePositionsPage("0xabc", { limit: 50, offset: 100 })) as Array<
+    Record<string, unknown>
+  >;
 
   assert.equal(fetchMock.mock.callCount(), 1);
   const calledWith = fetchMock.mock.calls[0].arguments[0];
   const u = new URL(String(calledWith));
-  assert.equal(`${u.origin}${u.pathname}`, `${DATA_API_BASE}/positions`);
+  assert.equal(`${u.origin}${u.pathname}`, `${DATA_API_V2_BASE}/positions`);
   assert.equal(u.searchParams.get("user"), "0xabc");
-  assert.equal(u.searchParams.get("redeemable"), "true");
-  assert.equal(u.searchParams.get("sizeThreshold"), "0");
-  assert.equal(u.searchParams.get("limit"), "50");
-  assert.equal(u.searchParams.get("offset"), "100");
+  assert.equal(u.searchParams.get("status"), "REDEEMABLE");
+  assert.equal(u.searchParams.get("filter_type"), "TOKENS");
+  assert.equal(u.searchParams.get("filter_amount"), "0");
+  assert.equal(u.searchParams.get("limit"), "150");
+  assert.equal(u.searchParams.get("offset"), null, "v2 rejects offset, even offset=0");
+
+  assert.equal(rows.length, 50);
+  assert.equal(rows[0]!.conditionId, "0xc100");
+  assert.equal(rows[0]!.currentValue, 10);
+  assert.equal(rows[1]!.currentValue, 0);
+  assert.equal(rows[0]!.redeemable, true);
+  assert.equal(rows[0]!.size, 10);
+  // The summary still works on the converted rows.
+  const summary = summarizeRedeemablePositions(rows as Parameters<typeof summarizeRedeemablePositions>[0]);
+  assert.equal(summary.redeemableCount, 50);
+  assert.equal(summary.estimatedRedeemableValue, 250);
 });

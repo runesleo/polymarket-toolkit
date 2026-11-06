@@ -1,4 +1,4 @@
-// Scenario: probe Data API /activity pagination for duplicate JSON (issue #1 ~4000 cap).
+// Scenario: probe Data API v2 /activity cursor pagination for duplicate pages (v1 stalled near ~4000 rows, issue #1).
 // Problem: continuing to paginate after the cap returns the same page — looks like success, data is wrong.
 // Run: npx tsx examples/16-activity-cap-probe.ts <proxy_wallet> [max_pages]
 // API: fetchActivityPages — cursor pagination + DUPLICATE_PAGE / STALE_CURSOR warnings.

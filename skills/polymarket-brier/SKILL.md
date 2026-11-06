@@ -42,17 +42,17 @@ Same as polymarket-profile — accepts 0x address, username, or profile URL.
 ### Step 1: Fetch Settled Positions
 
 ```bash
-curl -s "https://data-api.polymarket.com/positions?user={ADDRESS}&sizeThreshold=0&limit=100&offset=0"
+curl -s "https://data-api.polymarket.com/v2/positions?user={ADDRESS}&status=REDEEMABLE&limit=100"
 ```
 
-Paginate until all positions are fetched (same as polymarket-profile).
+Data API v2 (v1 `/positions` answers HTTP 410 since November 2026): the body is `{ "data": [...], "pagination": { "next_cursor": ... } }`. Paginate by repeating the same URL with `&cursor={next_cursor}` until it is null (same as polymarket-profile) — never `offset`, which v2 rejects.
 
-Filter to **settled positions only**: `redeemable == true`.
+`status=REDEEMABLE` returns **settled positions only** (won and lost alike, every row `redeemable == true`).
 
-For each settled position, extract:
+For each settled position, extract (v2 field names; the steps below use the v1 names in parentheses):
 - `outcome`: "Yes" or "No" — the side the trader held
-- `avgPrice`: the trader's average entry price = their implied probability forecast
-- `currentValue > 0`: whether the market resolved in their favor (won) or not (lost)
+- `avg_price` (`avgPrice`): the trader's average entry price = their implied probability forecast
+- `current_value > 0` (`currentValue > 0`): whether the market resolved in their favor (won) or not (lost)
 
 ### Step 2: Determine Actual Outcome
 

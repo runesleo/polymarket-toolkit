@@ -6,9 +6,9 @@
 
 | Layer | Source | Good for |
 |-------|--------|----------|
-| **LB `/profit`** | `lb-api.polymarket.com` | Quick snapshot · leaderboard rank |
-| **Position `cashPnL`** | data-api `/positions` | Profile overview · approximate |
-| **Cashflow replay** | data-api `/activity` all types | Audit · research · benchmarking |
+| **Leaderboard PnL** | data-api `/v2/leaderboard` | Quick snapshot · leaderboard rank |
+| **Position `cashPnL`** | data-api `/v2/positions` | Profile overview · approximate |
+| **Cashflow replay** | data-api `/v2/activity` all types | Audit · research · benchmarking |
 
 ## Activity types that move cash (polymarket-pnl replays all)
 
@@ -20,7 +20,7 @@
 
 ## The main reason your number won't match the profile
 
-> **Polymarket's own PnL — profile, `lb-api`, and the `user-pnl` curve — is *pre-fee*.
+> **Polymarket's own PnL — profile, the leaderboard, and the `user-pnl` curve — is *pre-fee*.
 > A cashflow replay is inherently *post-fee*.
 > `gap ≈ lifetime taker fees − maker rebates`**
 

@@ -1,8 +1,8 @@
 // 场景：读取用户当前/历史仓位一页，用于展示持仓或计算 Brier 的原始输入。
-// Problem: positions 接口需分页；本例只展示 offset=0 的第一页。
+// Problem: positions 接口需分页；本例只展示第一页。
 // Run: npx tsx examples/04-fetch-positions-page.ts
-// API: fetchPositionsPage — GET /positions?user=&limit=&offset=&sizeThreshold=
-// Notes: 若返回满页 100 条，继续增大 offset 直到不足一页。
+// API: fetchPositionsPage — GET /v2/positions?user=&limit=&filter_type=TOKENS&filter_amount=
+// Notes: v2 只认游标；offset 参数由库在本地跳过实现（v2 收到 offset 会 400）。
 
 import { fetchPositionsPage } from "../src/index.ts";
 

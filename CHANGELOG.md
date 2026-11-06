@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- Moved every Data API read to v2 (`/v2/activity`, `/v2/positions`, `/v2/trades`, `/v2/leaderboard`, `/v2/user-pnl`). v1 routes, `lb-api.polymarket.com` and `user-pnl-api.polymarket.com` answer HTTP 410. The exported fetchers keep their names, options and v1-named rows; `offset` and `limit` above 1000 are served by following v2 cursors, and activity reads ask for the full history (`start=1`) instead of v2's three-year default.
+- `fetchActivityPages` pages by cursor for every type, reports a scan stopped at `maxPages` as `INCOMPLETE`, and no longer raises the v1 `APPROACHING_CAP` warning.
+- `fetchLbProfitForAddress` reports `amount: null` when v2 answers `pnl: 0` for a wallet with real volume.
+
 ### Added
 
 - Glama metadata and a root Docker entrypoint pinned to the official `polymarket-toolkit-mcp@0.7.2` package.

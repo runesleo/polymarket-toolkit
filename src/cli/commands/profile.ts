@@ -74,7 +74,7 @@ export async function runProfile(argv: string[]): Promise<void> {
   const payload = {
     address,
     displayName: name,
-    pnl: { all: pnlAll, d7: pnl7d, d30: pnl30d, source: "lb-api.polymarket.com/profit" },
+    pnl: { all: pnlAll, d7: pnl7d, d30: pnl30d, source: "data-api.polymarket.com/v2/leaderboard" },
     positions: {
       openCount: open.length,
       settledSampleCount: settledForBrier.length,
@@ -107,7 +107,7 @@ export async function runProfile(argv: string[]): Promise<void> {
   console.log(`  Polymarket Profile · ${name}`);
   console.log(`  ${address}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`\n📊 PnL (LB API)`);
+  console.log(`\n📊 PnL (official leaderboard)`);
   console.log(`  All-time:  ${fmtUsd(pnlAll)}`);
   console.log(`  7d:        ${fmtUsd(pnl7d)}`);
   console.log(`  30d:       ${fmtUsd(pnl30d)}`);

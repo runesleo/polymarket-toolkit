@@ -15,7 +15,7 @@
 
 These are **CTF contract calls** (often via Gnosis Safe / proxy wallet), **not** CLOB REST “place order”.
 
-Activity feed types you can audit read-only: `SPLIT`, `MERGE`, `CONVERSION` on `data-api.polymarket.com/activity`.
+Activity feed types you can audit read-only: `SPLIT`, `MERGE`, `CONVERSION` on `data-api.polymarket.com/v2/activity`.
 
 ---
 
