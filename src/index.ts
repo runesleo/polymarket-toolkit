@@ -3,8 +3,21 @@
  * and the CLOB HTTP + market WebSocket channel. No API keys required.
  */
 
+/**
+ * Retired host (HTTP 410 since 2026-11-06, "use /v2/leaderboard"); the `Lb`
+ * helpers below read Data API v2 instead.
+ * @deprecated
+ */
 export const LB_API_BASE = "https://lb-api.polymarket.com";
 export const DATA_API_BASE = "https://data-api.polymarket.com";
+/**
+ * Data API v2. The v1 routes (bare `/activity`, `/positions`, `/trades`,
+ * `/v1/leaderboard`, ...) answer HTTP 410 since 2026-11-03.
+ * Guide: https://docs.polymarket.com/migrate/data-api-v1-to-v2.md
+ */
+export const DATA_API_V2_BASE = `${DATA_API_BASE}/v2`;
+/** v2 rejects `limit` above 1000 on every list route. */
+export const DATA_API_V2_MAX_PAGE = 1000;
 export const GAMMA_API_BASE = "https://gamma-api.polymarket.com";
 export const CLOB_API_BASE = "https://clob.polymarket.com";
 export const CLOB_WS_MARKET_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
@@ -30,58 +43,268 @@ export async function pmGetJson<T = unknown>(url: string | URL): Promise<T> {
   }
 }
 
-/** LB API: PnL row(s) for a single proxy wallet (array, often one element). */
+/* ------------------------------------------------------------------ *
+ * Data API v2 plumbing
+ *
+ * What changed from v1, as far as these helpers are concerned:
+ *   - every list response is wrapped: { data: [...], pagination: { next_cursor } }
+ *   - pages are cursor-only; `offset` (even offset=0) is a 400
+ *   - rows are snake_case (proxy_wallet, usdc_size, token_id, ...)
+ *
+ * The exported fetchers below still return v1-named rows (`toV1*Row`), so the
+ * maths written against v1 — fee basis, execution mix, markout, Brier — is
+ * untouched by the migration.
+ * ------------------------------------------------------------------ */
+
+type DataV2Params = Record<string, string | number | boolean | null | undefined>;
+type V2Row = Record<string, unknown>;
+
+export interface DataV2Page {
+  rows: V2Row[];
+  /** null once the upstream history is exhausted. */
+  nextCursor: string | null;
+}
+
+/** One Data API v2 list page. Throws on non-2xx or on a body that is not the v2 list envelope. */
+export async function fetchDataV2Page(
+  path: string,
+  params: DataV2Params,
+  cursor?: string | null,
+): Promise<DataV2Page> {
+  const u = new URL(`${DATA_API_V2_BASE}${path}`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== "") u.searchParams.set(k, String(v));
+  }
+  // Restate the original params alongside the cursor: /v2/activity and
+  // /v2/positions answer a cursor-only call with 400 ("user not provided").
+  if (cursor) u.searchParams.set("cursor", cursor);
+  const body = await pmGetJson<{ data?: unknown; pagination?: { next_cursor?: unknown } }>(u);
+  if (!body || typeof body !== "object" || !Array.isArray(body.data)) {
+    throw new Error(
+      `Data API v2 ${path}: expected { data: [...] }, got ${JSON.stringify(body).slice(0, 200)}`,
+    );
+  }
+  const c = body.pagination?.next_cursor;
+  return {
+    rows: body.data.filter((r): r is V2Row => !!r && typeof r === "object"),
+    nextCursor: typeof c === "string" && c ? c : null,
+  };
+}
+
+/**
+ * Read rows `[skip, skip + take)` of a v2 list by following `next_cursor`.
+ *
+ * v2 has no offset, so a v1-style `offset` is honoured by reading past it, and
+ * a `limit` above the 1000-row page cap is honoured by reading more pages.
+ */
+async function collectDataV2(
+  path: string,
+  params: DataV2Params,
+  opts: { take: number; skip?: number },
+): Promise<V2Row[]> {
+  const skip = Math.max(0, Math.floor(opts.skip ?? 0));
+  const want = skip + Math.max(0, Math.floor(opts.take));
+  const out: V2Row[] = [];
+  let cursor: string | null = null;
+  while (out.length < want) {
+    const page = await fetchDataV2Page(
+      path,
+      { ...params, limit: Math.min(DATA_API_V2_MAX_PAGE, want - out.length) },
+      cursor,
+    );
+    out.push(...page.rows);
+    if (!page.nextCursor || page.rows.length === 0) break;
+    cursor = page.nextCursor;
+  }
+  return out.slice(skip, want);
+}
+
+/** v2 `/v2/activity` row → v1 `/activity` field names. */
+export function toV1ActivityRow(r: V2Row): Record<string, unknown> {
+  return {
+    proxyWallet: r.proxy_wallet,
+    timestamp: r.timestamp,
+    conditionId: r.condition_id,
+    type: r.type,
+    size: r.size,
+    usdcSize: r.usdc_size,
+    transactionHash: r.transaction_hash,
+    price: r.price,
+    asset: r.token_id,
+    side: r.side,
+    outcomeIndex: r.outcome_index,
+    outcome: r.outcome,
+    title: r.title,
+    slug: r.slug,
+    icon: r.icon,
+    eventSlug: r.event_slug,
+    name: r.name,
+    pseudonym: r.pseudonym,
+  };
+}
+
+/**
+ * v2 `/v2/positions` row → v1 `/positions` field names.
+ * v1 `initialValue` ↔ fee-exclusive `entry_cost_usdc`, `cashPnl` ↔ `unrealized_pnl`,
+ * `totalBought` (lifetime bought shares) ↔ `total_size`.
+ */
+export function toV1PositionRow(r: V2Row): Record<string, unknown> {
+  return {
+    proxyWallet: r.proxy_wallet,
+    asset: r.token_id,
+    conditionId: r.condition_id,
+    size: r.current_size,
+    avgPrice: r.avg_price,
+    initialValue: r.entry_cost_usdc,
+    currentValue: r.current_value,
+    cashPnl: r.unrealized_pnl,
+    percentPnl: r.percent_pnl,
+    totalBought: r.total_size,
+    realizedPnl: r.realized_pnl,
+    percentRealizedPnl: r.percent_realized_pnl,
+    curPrice: r.current_price,
+    redeemable: r.redeemable,
+    mergeable: r.mergeable,
+    negativeRisk: r.negative_risk,
+    title: r.title,
+    slug: r.slug,
+    icon: r.icon,
+    eventId: r.event_id,
+    eventSlug: r.event_slug,
+    outcome: r.outcome,
+    outcomeIndex: r.outcome_index,
+    oppositeOutcome: r.opposite_outcome,
+    oppositeAsset: r.opposite_token_id,
+    endDate: r.end_date,
+    status: r.status,
+  };
+}
+
+/** v2 `/v2/leaderboard` row → v1 `/v1/leaderboard` field names. */
+export function toV1LeaderboardRow(r: V2Row): Record<string, unknown> {
+  return {
+    rank: r.rank ?? r.rank_pnl,
+    proxyWallet: r.user_id,
+    userName: r.user_name,
+    xUsername: r.x_username,
+    verifiedBadge: r.verified,
+    vol: r.volume,
+    pnl: r.pnl,
+    profileImage: r.profile_image,
+  };
+}
+
+/** v2 `/v2/trades` row → v1 `/trades` field names (`TradeRow`). */
+export function toV1TradeRow(r: V2Row): TradeRow {
+  return {
+    proxyWallet: r.proxy_wallet as string,
+    side: r.side as "BUY" | "SELL",
+    asset: r.token_id as string,
+    conditionId: r.condition_id as string,
+    size: r.size as number,
+    price: r.price as number,
+    timestamp: r.timestamp as number,
+    title: r.title as string | undefined,
+    outcome: r.outcome as string | undefined,
+    transactionHash: r.transaction_hash as string | undefined,
+  };
+}
+
+/*
+ * lb-api.polymarket.com answers HTTP 410 ("retired, use /v2/leaderboard") as
+ * of 2026-11-06. The three `Lb` helpers keep their names and their lb-api row
+ * shape (`amount`, `name`, `proxyWallet`) but read Data API v2 `/v2/leaderboard`.
+ */
+
+/** lb-api window → v2 leaderboard `time_period` (v2 names these `week` / `month`; it has no "7d" / "30d"). */
+const LB_WINDOW_TO_V2_PERIOD: Record<string, string> = { all: "all", "7d": "week", "30d": "month" };
+
+function lbTimePeriod(window: string | undefined): string {
+  const w = (window ?? "all").toLowerCase();
+  return LB_WINDOW_TO_V2_PERIOD[w] ?? w;
+}
+
+/**
+ * v2 leaderboard row → lb-api `/profit` row.
+ *
+ * `amount` is null — not 0 — when v2 reports `pnl: 0` against a non-zero
+ * volume. Measured 2026-11-06: `/v2/leaderboard?time_period=all&user=` gives
+ * exactly 0.0 for some wallets with real volume (not computed yet), and a later
+ * re-read returned a real figure for several of them. A traded wallet landing
+ * on exactly $0.00 is not a reading worth trusting.
+ */
+export function toLbProfitRow(r: V2Row): Record<string, unknown> {
+  const pnl = typeof r.pnl === "number" ? r.pnl : r.pnl == null ? null : Number(r.pnl);
+  const volume = Number(r.volume ?? 0);
+  const uncomputed = pnl === 0 && Number.isFinite(volume) && volume > 0;
+  return {
+    proxyWallet: r.user_id,
+    amount: uncomputed || pnl == null || !Number.isFinite(pnl) ? null : pnl,
+    name: r.user_name,
+    profileImage: r.profile_image,
+    rank: r.rank ?? r.rank_pnl,
+    volume: r.volume,
+  };
+}
+
+/** PnL row for a single proxy wallet (array of zero or one lb-api-shaped rows), from `/v2/leaderboard?user=`. */
 export async function fetchLbProfitForAddress(
   address: string,
   window: "all" | "7d" | "30d" = "all",
 ): Promise<unknown[]> {
-  const u = new URL(`${LB_API_BASE}/profit`);
-  u.searchParams.set("address", address);
-  u.searchParams.set("window", window);
-  return pmGetJson<unknown[]>(u);
+  const u = new URL(`${DATA_API_V2_BASE}/leaderboard`);
+  u.searchParams.set("user", address);
+  u.searchParams.set("time_period", lbTimePeriod(window));
+  const body = await pmGetJson<{ data?: unknown }>(u);
+  const row = body && typeof body === "object" ? body.data : undefined;
+  // Unknown wallets are `{ "data": null }`, which lb-api expressed as [].
+  return row && typeof row === "object" && !Array.isArray(row) ? [toLbProfitRow(row as V2Row)] : [];
 }
 
-/** LB API: one page of the profit leaderboard (for username search or scanning). */
+/** One page of the all-category PnL leaderboard as lb-api-shaped rows (for username search or scanning). */
 export async function fetchLbProfitLeaderboardPage(options: {
   window?: string;
   limit?: number;
   offset?: number;
 }): Promise<unknown[]> {
-  const u = new URL(`${LB_API_BASE}/profit`);
-  u.searchParams.set("window", options.window ?? "all");
-  u.searchParams.set("limit", String(options.limit ?? 500));
-  u.searchParams.set("offset", String(options.offset ?? 0));
-  return pmGetJson<unknown[]>(u);
+  const rows = await collectDataV2(
+    "/leaderboard",
+    { time_period: lbTimePeriod(options.window), sort_by: "PNL", category: "overall" },
+    { take: options.limit ?? 500, skip: options.offset },
+  );
+  return rows.map(toLbProfitRow);
 }
 
-type LbUserRow = { name?: string; pseudonym?: string; proxyWallet?: string };
-
-/** Resolve a display name via LB profit leaderboard pagination (ranked users only). */
+/**
+ * Resolve a display name by scanning the all-time PnL leaderboard (ranked users
+ * only), `maxPages` pages of 500. v2 board rows carry `user_name` only, so a
+ * pseudonym no longer matches.
+ */
 export async function resolveLbUsernameToProxyWallet(
   username: string,
   maxPages = 4,
 ): Promise<string | null> {
   const needle = username.trim().toLowerCase();
   if (!needle) return null;
+  const params: DataV2Params = { time_period: "all", sort_by: "PNL", category: "overall", limit: 500 };
+  let cursor: string | null = null;
   for (let page = 0; page < maxPages; page++) {
-    const rows = (await fetchLbProfitLeaderboardPage({
-      limit: 500,
-      offset: page * 500,
-    })) as LbUserRow[];
-    if (!rows.length) break;
+    const { rows, nextCursor } = await fetchDataV2Page("/leaderboard", params, cursor);
     for (const row of rows) {
-      const n = (row.name ?? "").toLowerCase();
-      const p = (row.pseudonym ?? "").toLowerCase();
-      if (n === needle || p === needle) {
-        return row.proxyWallet ?? null;
+      if (String(row.user_name ?? "").toLowerCase() === needle) {
+        return typeof row.user_id === "string" ? row.user_id : null;
       }
     }
-    if (rows.length < 500) break;
+    if (!nextCursor || rows.length === 0) break;
+    cursor = nextCursor;
   }
   return null;
 }
 
-/** Data API: PnL leaderboard (includes rank, vol, userName). */
+/**
+ * Data API v2: PnL leaderboard (includes rank, vol, userName), as v1-named rows.
+ * `orderBy` keeps the v1 spelling: `VOL` is sent as v2's `VOLUME`.
+ */
 export async function fetchDataLeaderboardPnL(options: {
   limit?: number;
   offset?: number;
@@ -89,26 +312,35 @@ export async function fetchDataLeaderboardPnL(options: {
   orderBy?: string;
   category?: string;
 }): Promise<unknown[]> {
-  const u = new URL(`${DATA_API_BASE}/v1/leaderboard`);
-  u.searchParams.set("timePeriod", options.timePeriod ?? "all");
-  u.searchParams.set("orderBy", options.orderBy ?? "PNL");
-  u.searchParams.set("category", options.category ?? "overall");
-  u.searchParams.set("limit", String(options.limit ?? 50));
-  u.searchParams.set("offset", String(options.offset ?? 0));
-  return pmGetJson<unknown[]>(u);
+  const orderBy = (options.orderBy ?? "PNL").toUpperCase();
+  const rows = await collectDataV2(
+    "/leaderboard",
+    {
+      time_period: (options.timePeriod ?? "all").toLowerCase(),
+      sort_by: orderBy === "VOL" ? "VOLUME" : orderBy,
+      category: options.category ?? "overall",
+    },
+    { take: options.limit ?? 50, skip: options.offset },
+  );
+  return rows.map(toV1LeaderboardRow);
 }
 
-/** Data API: one page of positions for a user. */
+/**
+ * Data API v2: positions a user currently holds (v2 `status=OPEN`, which also
+ * carries settled-but-unredeemed rows, as v1 `/positions` did), as v1-named rows.
+ * `sizeThreshold` maps to v2's `filter_type=TOKENS&filter_amount`; v2 keeps a
+ * 0.1-share dust floor below which it will not go.
+ */
 export async function fetchPositionsPage(
   user: string,
   options: { limit?: number; offset?: number; sizeThreshold?: number } = {},
 ): Promise<unknown[]> {
-  const u = new URL(`${DATA_API_BASE}/positions`);
-  u.searchParams.set("user", user);
-  u.searchParams.set("sizeThreshold", String(options.sizeThreshold ?? 0));
-  u.searchParams.set("limit", String(options.limit ?? 100));
-  u.searchParams.set("offset", String(options.offset ?? 0));
-  return pmGetJson<unknown[]>(u);
+  const rows = await collectDataV2(
+    "/positions",
+    { user, filter_type: "TOKENS", filter_amount: options.sizeThreshold ?? 0 },
+    { take: options.limit ?? 100, skip: options.offset },
+  );
+  return rows.map(toV1PositionRow);
 }
 
 /**
@@ -158,18 +390,20 @@ function numeric(value: number | string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Data API: one page of positions filtered to `redeemable=true`. Public, no wallet key required. */
+/**
+ * Data API v2: redeemable positions (`status=REDEEMABLE`, winning and losing
+ * rows alike), as v1-named rows. Public, no wallet key required.
+ */
 export async function fetchRedeemablePositionsPage(
   user: string,
   options: { limit?: number; offset?: number } = {},
 ): Promise<unknown[]> {
-  const u = new URL(`${DATA_API_BASE}/positions`);
-  u.searchParams.set("user", user);
-  u.searchParams.set("redeemable", "true");
-  u.searchParams.set("sizeThreshold", "0");
-  u.searchParams.set("limit", String(options.limit ?? 100));
-  u.searchParams.set("offset", String(options.offset ?? 0));
-  return pmGetJson<unknown[]>(u);
+  const rows = await collectDataV2(
+    "/positions",
+    { user, status: "REDEEMABLE", filter_type: "TOKENS", filter_amount: 0 },
+    { take: options.limit ?? 100, skip: options.offset },
+  );
+  return rows.map(toV1PositionRow);
 }
 
 /** Summarize redeemable Data API positions by condition, without signing or sending transactions. */
@@ -232,7 +466,31 @@ export function resolveRedeemMode(options: {
     : "watchdog";
 }
 
-/** Data API: one page of activity (optionally filtered by type / cursor `end`). */
+/**
+ * v2 `/v2/activity` only reaches three years back unless told otherwise;
+ * `start=1` is the documented way to ask for the whole history, which is what
+ * v1 `/activity` returned.
+ */
+export const ACTIVITY_FULL_HISTORY_START = 1;
+
+function activityParams(
+  user: string,
+  options: { end?: number; type?: string; sortDirection?: "ASC" | "DESC" },
+): DataV2Params {
+  return {
+    user,
+    start: ACTIVITY_FULL_HISTORY_START,
+    end: options.end,
+    type: options.type,
+    sort_direction: options.sortDirection,
+  };
+}
+
+/**
+ * Data API v2: one read of activity (optionally filtered by type / upper bound
+ * `end`), as v1-named rows. `offset` is honoured by reading past it — v2 itself
+ * rejects the parameter.
+ */
 export async function fetchActivityPage(
   user: string,
   options: {
@@ -243,31 +501,30 @@ export async function fetchActivityPage(
     sortDirection?: "ASC" | "DESC";
   } = {},
 ): Promise<unknown[]> {
-  const u = new URL(`${DATA_API_BASE}/activity`);
-  u.searchParams.set("user", user);
-  u.searchParams.set("limit", String(options.limit ?? 500));
-  if (options.end != null) u.searchParams.set("end", String(options.end));
-  if (options.type) u.searchParams.set("type", options.type);
-  if (options.offset != null) u.searchParams.set("offset", String(options.offset));
-  if (options.sortDirection) u.searchParams.set("sortDirection", options.sortDirection);
-  return pmGetJson<unknown[]>(u);
+  const rows = await collectDataV2("/activity", activityParams(user, options), {
+    take: options.limit ?? 500,
+    skip: options.offset,
+  });
+  return rows.map(toV1ActivityRow);
 }
 
 /**
- * Activity types that come back empty under the API's default DESC ordering.
+ * Activity types read in ASC order.
  *
- * Measured 2026-08-18 on one wallet, ordering the only thing changed:
- *   MERGE   DESC 0 rows   ASC 2562 rows
- *   SPLIT   DESC 0 rows   ASC  132 rows
- *   REDEEM  DESC 10697    ASC 10697
- *   TRADE   DESC 69161    ASC 69161
- *
- * An empty array is indistinguishable from "this wallet never merged", which is
- * exactly the wrong answer to hand a split/merge readiness check.
+ * v1 returned MERGE and SPLIT empty under its default DESC ordering (measured
+ * 2026-08-18: MERGE DESC 0 rows vs ASC 2562 on one wallet). v2 no longer does —
+ * measured 2026-11-06 on two wallets, MERGE DESC and ASC returned the same
+ * rows — but the cursor carries its direction, so asking in ASC costs nothing
+ * and keeps the oldest-first order these readers have always printed.
  */
 export const ACTIVITY_TYPES_NEEDING_ASC = new Set(["MERGE", "SPLIT"]);
 
-/** The API rejects offset > 5000 with a 400. Measured 2026-08-18; independent of `limit`. */
+/**
+ * v1 `/activity` rejected offset > 5000 (measured 2026-08-18). v2 has no
+ * offset at all and its cursor walks past 5000 rows (measured 2026-11-06,
+ * 8000 TRADE rows on one wallet). Kept for callers that still import it.
+ * @deprecated nothing in this package pages by offset any more.
+ */
 export const ACTIVITY_OFFSET_CAP = 5000;
 
 /** Gamma: events for a slug (array). */
@@ -379,7 +636,10 @@ export function computeBrierScoreFromSettledPositions(positions: PositionLike[])
   return { brier: sumSq / settled.length, n: settled.length, wins };
 }
 
-/** Community-reported effective row cap for Data API `/activity` offset/cursor pagination. */
+/**
+ * Community-reported effective row cap for Data API v1 `/activity` pagination.
+ * v2's cursor has no such cap, so `fetchActivityPages` no longer warns on it.
+ */
 export const ACTIVITY_API_ROW_CAP_HINT = 4000;
 
 export type ActivityPaginationWarningCode =
@@ -393,8 +653,6 @@ export type ActivityPaginationWarning = {
   message: string;
 };
 
-type ActivityRow = { timestamp?: number };
-
 /** Stable fingerprint to detect duplicate JSON pages (issue #1). */
 export function fingerprintActivityPage(rows: unknown[]): string {
   return JSON.stringify(rows);
@@ -405,19 +663,27 @@ export function analyzeActivityPaginationWarnings(options: {
   totalRows: number;
   sawDuplicatePage: boolean;
   sawStaleCursor: boolean;
+  /** Stopped at `maxPages` while upstream still offered a `next_cursor`. */
+  truncated?: boolean;
+  /**
+   * Row count that triggers APPROACHING_CAP; `null` turns it off. Defaults to
+   * the v1 hint. v2's cursor has no such cap, so `fetchActivityPages` passes null.
+   */
+  rowCap?: number | null;
 }): ActivityPaginationWarning[] {
   const warnings: ActivityPaginationWarning[] = [];
+  const rowCap = options.rowCap === undefined ? ACTIVITY_API_ROW_CAP_HINT : options.rowCap;
   if (options.sawDuplicatePage) {
     warnings.push({
       code: "DUPLICATE_PAGE",
       message:
-        `Activity API returned an identical page twice (reported ~${ACTIVITY_API_ROW_CAP_HINT} row cap). Treat results as INCOMPLETE — shard by time window or use skills/polymarket-pnl \`pagination_incomplete\` flags.`,
+        `Activity API returned an identical page twice. Treat results as INCOMPLETE — shard by time window or use skills/polymarket-pnl \`pagination_incomplete\` flags.`,
     });
   }
   if (options.sawStaleCursor) {
     warnings.push({
       code: "STALE_CURSOR",
-      message: "Activity cursor (`end`) did not advance between pages. Pagination may have stalled.",
+      message: "Activity cursor did not advance between pages. Pagination may have stalled.",
     });
   }
   if (options.sawDuplicatePage || options.sawStaleCursor) {
@@ -425,11 +691,16 @@ export function analyzeActivityPaginationWarnings(options: {
       code: "INCOMPLETE",
       message: "Activity pagination did not produce a complete scan. Shard by time window before relying on totals.",
     });
+  } else if (options.truncated) {
+    warnings.push({
+      code: "INCOMPLETE",
+      message: `Stopped at the page limit with more activity upstream (${options.totalRows} rows read). Raise maxPages before relying on totals.`,
+    });
   }
-  if (options.totalRows >= ACTIVITY_API_ROW_CAP_HINT - 500) {
+  if (rowCap != null && options.totalRows >= rowCap - 500) {
     warnings.push({
       code: "APPROACHING_CAP",
-      message: `Fetched ${options.totalRows} activity rows (approaching ~${ACTIVITY_API_ROW_CAP_HINT} cap). Next pages may repeat JSON.`,
+      message: `Fetched ${options.totalRows} activity rows (approaching ~${rowCap} cap). Next pages may repeat JSON.`,
     });
   }
   return warnings;
@@ -440,8 +711,9 @@ export function activityWarningsLikelyIncomplete(warnings: ActivityPaginationWar
 }
 
 /**
- * Paginate `/activity` with duplicate-page and stale-cursor detection.
- * Does not mutate wallets or bypass API limits — surfaces INCOMPLETE honestly.
+ * Paginate `/v2/activity` by cursor, with duplicate-page and stale-cursor detection.
+ * Rows come back v1-named. Does not mutate wallets or bypass API limits —
+ * surfaces INCOMPLETE honestly, including when `maxPages` stops it early.
  */
 export async function fetchActivityPages(
   user: string,
@@ -452,66 +724,49 @@ export async function fetchActivityPages(
   warnings: ActivityPaginationWarning[];
   likelyIncomplete: boolean;
 }> {
-  const limit = options.limit ?? 500;
+  const limit = Math.min(options.limit ?? 500, DATA_API_V2_MAX_PAGE);
   const maxPages = options.maxPages ?? 20;
+  const needsAsc = options.type != null && ACTIVITY_TYPES_NEEDING_ASC.has(options.type);
+  const params: DataV2Params = {
+    ...activityParams(user, { type: options.type, sortDirection: needsAsc ? "ASC" : undefined }),
+    limit,
+  };
   const collected: unknown[] = [];
-  let end: number | undefined;
+  let cursor: string | null = null;
   let lastFingerprint = "";
   let sawDuplicatePage = false;
   let sawStaleCursor = false;
+  let truncated = false;
   let pagesFetched = 0;
 
-  // MERGE and SPLIT return nothing at all under the default DESC ordering, so
-  // they have to be asked for in ASC — and the `end` cursor below walks
-  // backwards, which ASC does not support. Those types page by offset instead,
-  // bounded by the API's own 5000 cap.
-  const needsAsc = options.type != null && ACTIVITY_TYPES_NEEDING_ASC.has(options.type);
+  for (let page = 0; page < maxPages; page++) {
+    const { rows, nextCursor } = await fetchDataV2Page("/activity", params, cursor);
+    pagesFetched += 1;
+    if (!rows.length) break;
 
-  if (needsAsc) {
-    let offset = 0;
-    for (let page = 0; page < maxPages && offset <= ACTIVITY_OFFSET_CAP; page++) {
-      const batch = (await fetchActivityPage(user, {
-        limit,
-        type: options.type,
-        offset,
-        sortDirection: "ASC",
-      })) as ActivityRow[];
-      pagesFetched += 1;
-      if (!batch.length) break;
-      collected.push(...batch);
-      if (batch.length < limit) break;
-      offset += batch.length;
+    const fp = fingerprintActivityPage(rows);
+    if (lastFingerprint && fp === lastFingerprint) {
+      sawDuplicatePage = true;
+      break;
     }
-  } else {
-    for (let page = 0; page < maxPages; page++) {
-      const batch = (await fetchActivityPage(user, { limit, end, type: options.type })) as ActivityRow[];
-      pagesFetched += 1;
-      if (!batch.length) break;
+    lastFingerprint = fp;
+    collected.push(...rows.map(toV1ActivityRow));
 
-      const fp = fingerprintActivityPage(batch);
-      if (lastFingerprint && fp === lastFingerprint) {
-        sawDuplicatePage = true;
-        break;
-      }
-      lastFingerprint = fp;
-      collected.push(...batch);
-
-      if (batch.length < limit) break;
-
-      const lastTs = batch[batch.length - 1]?.timestamp;
-      if (lastTs == null) break;
-      if (end !== undefined && end === lastTs) {
-        sawStaleCursor = true;
-        break;
-      }
-      end = lastTs;
+    if (!nextCursor) break;
+    if (nextCursor === cursor) {
+      sawStaleCursor = true;
+      break;
     }
+    cursor = nextCursor;
+    if (page === maxPages - 1) truncated = true;
   }
 
   const warnings = analyzeActivityPaginationWarnings({
     totalRows: collected.length,
     sawDuplicatePage,
     sawStaleCursor,
+    truncated,
+    rowCap: null,
   });
 
   const likelyIncomplete = activityWarningsLikelyIncomplete(warnings);
@@ -542,10 +797,10 @@ export interface TradeRow {
 }
 
 /**
- * Data API: a wallet's own fills.
+ * Data API v2: a wallet's own fills, as v1-named `TradeRow`s.
  *
- * `takerOnly` defaults to FALSE here, unlike the upstream endpoint, whose default
- * behaves like `takerOnly=true`. With the upstream default a market maker sees only
+ * `takerOnly` defaults to FALSE here, unlike the upstream endpoint, whose
+ * `taker_only` defaults to true. With the upstream default a market maker sees only
  * the legs where it crossed the spread — the entire passive side silently disappears.
  * Markout on taker-only fills measures the wrong population.
  */
@@ -553,29 +808,31 @@ export async function fetchUserTrades(
   address: string,
   options: { limit?: number; takerOnly?: boolean; offset?: number } = {},
 ): Promise<TradeRow[]> {
-  const u = new URL(`${DATA_API_BASE}/trades`);
-  u.searchParams.set("user", address);
-  u.searchParams.set("takerOnly", String(options.takerOnly ?? false));
-  u.searchParams.set("limit", String(options.limit ?? 500));
-  if (options.offset) u.searchParams.set("offset", String(options.offset));
-  return await pmGetJson<TradeRow[]>(u);
+  const rows = await collectDataV2(
+    "/trades",
+    { user: address, taker_only: options.takerOnly ?? false },
+    { take: options.limit ?? 500, skip: options.offset },
+  );
+  return rows.map(toV1TradeRow);
 }
 
 /**
- * Data API: every print in one market.
+ * Data API v2: every print in one market (each fill once, on its taker side).
  *
- * Filter by `market=<conditionId>`, never `asset=<tokenId>` — the `asset` parameter is
- * accepted and ignored, so it returns the whole book while looking like it filtered.
- * Split by token client-side instead.
+ * Filter by condition id (`condition=`; v1's `market=` is a 400 on v2). Split by
+ * token client-side — v1 accepted and silently ignored `asset=<tokenId>`, returning
+ * the whole book while looking like it filtered.
  */
 export async function fetchMarketTrades(
   conditionId: string,
   options: { limit?: number } = {},
 ): Promise<TradeRow[]> {
-  const u = new URL(`${DATA_API_BASE}/trades`);
-  u.searchParams.set("market", conditionId);
-  u.searchParams.set("limit", String(options.limit ?? 1000));
-  return await pmGetJson<TradeRow[]>(u);
+  const rows = await collectDataV2(
+    "/trades",
+    { condition: conditionId },
+    { take: options.limit ?? 1000 },
+  );
+  return rows.map(toV1TradeRow);
 }
 
 export interface MarkoutBucket {
@@ -1082,11 +1339,11 @@ export function netAfterFees(
  * user-pnl — the official equity curve
  * ------------------------------------------------------------------ */
 
-/** `interval` values the user-pnl host accepts. There is no `1y`. */
-export type UserPnlInterval = "max" | "all" | "1m" | "1w" | "1d" | "12h";
+/** `interval` values `/v2/user-pnl` accepts. There is no `1y`. */
+export type UserPnlInterval = "max" | "all" | "1m" | "1w" | "1d" | "12h" | "6h";
 /**
- * `fidelity` is an enum, not a number of minutes. Passing `60` is rejected —
- * with HTTP 200 and an object body, not a 4xx — so callers must check the shape.
+ * `fidelity` is an enum, not a number of minutes. Passing `60` is a 400 on v2
+ * ("fidelity must be one of 1d, 18h, 12h, 3h, 1h").
  */
 export type UserPnlFidelity = "1d" | "18h" | "12h" | "3h" | "1h";
 
@@ -1095,40 +1352,54 @@ export interface UserPnlPoint {
   p: number;
 }
 
+/**
+ * Retired host (HTTP 410 since 2026-11-06); `fetchUserPnlSeries` reads
+ * `/v2/user-pnl` instead.
+ * @deprecated
+ */
 export const USER_PNL_API_BASE = "https://user-pnl-api.polymarket.com";
 
 /**
- * The time series behind Polymarket's own equity curve.
+ * The time series behind Polymarket's own equity curve, from `/v2/user-pnl`.
  *
- * `lb-api /profit` returns a single number per window, so it cannot draw a
+ * The leaderboard returns a single number per window, so it cannot draw a
  * trend; this is the endpoint that can.
+ *
+ * v2 returns each point as a set of PnL components. `p` is `position_pnl`,
+ * the component that lands on `/v2/leaderboard` all-time `pnl` (measured
+ * 2026-11-06: equal on one wallet, $0.45 apart on another — combo PnL).
  *
  * ⚠️ Two things to know before comparing it to anything:
  *  - It is the same **pre-fee, pre-rebate** basis as the leaderboard. A cashflow
  *    replay will drift below it by the cumulative taker fees, and that drift
  *    grows monotonically — which is how you tell it apart from open-position
  *    mark drift, which oscillates.
- *  - It is bucketed by `fidelity` while `lb-api` is realtime, so the two
+ *  - It is bucketed by `fidelity` while the leaderboard is realtime, so the two
  *    official sources differ by a few hundred dollars at any instant.
  *
- * Throws if the host returns a non-array body, which is how it reports a bad
- * `fidelity` while still saying 200.
+ * Throws if the body is not `{ data: { points: [...] } }`. An unknown wallet
+ * is an empty series.
  */
 export async function fetchUserPnlSeries(
   address: string,
   options: { interval?: UserPnlInterval; fidelity?: UserPnlFidelity } = {},
 ): Promise<UserPnlPoint[]> {
-  const u = new URL(`${USER_PNL_API_BASE}/user-pnl`);
-  u.searchParams.set("user_address", address);
+  const u = new URL(`${DATA_API_V2_BASE}/user-pnl`);
+  u.searchParams.set("user", address);
   u.searchParams.set("interval", options.interval ?? "all");
   u.searchParams.set("fidelity", options.fidelity ?? "1d");
-  const body = await pmGetJson<unknown>(u);
-  if (!Array.isArray(body)) {
+  const body = await pmGetJson<{ data?: { points?: unknown } | null }>(u);
+  const points = body?.data?.points;
+  if (!Array.isArray(points)) {
     throw new Error(
-      `user-pnl returned a non-array body (HTTP 200). This is how it reports a rejected ` +
-        `filter — check that fidelity is one of 1d/18h/12h/3h/1h, not a minute count. ` +
-        `Body: ${JSON.stringify(body).slice(0, 200)}`,
+      `user-pnl returned no points array. Body: ${JSON.stringify(body).slice(0, 200)}`,
     );
   }
-  return body as UserPnlPoint[];
+  const out: UserPnlPoint[] = [];
+  for (const pt of points as Array<{ timestamp?: unknown; position_pnl?: unknown }>) {
+    const t = Number(pt?.timestamp);
+    const p = Number(pt?.position_pnl);
+    if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p });
+  }
+  return out;
 }

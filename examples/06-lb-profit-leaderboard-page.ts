@@ -1,8 +1,8 @@
 // 场景：抓取 LB 利润榜某一页，用于扫描排名或自定义排序前的原始数据。
-// Problem: 需要 limit/offset 分页参数拼装与 JSON 解析。
+// Problem: 需要分页参数拼装与 JSON 解析。
 // Run: npx tsx examples/06-lb-profit-leaderboard-page.ts
-// API: fetchLbProfitLeaderboardPage — GET /profit?window=&limit=&offset=
-// Notes: 默认 window=all；offset 步长建议与 limit 对齐避免漏行。
+// API: fetchLbProfitLeaderboardPage — GET /v2/leaderboard?time_period=&sort_by=PNL&limit=（lb-api 已停用，行仍是 lb-api 形状）
+// Notes: 默认 window=all（7d/30d 对应 v2 的 week/month）；offset 由库沿游标跳过实现。
 
 import { fetchLbProfitLeaderboardPage } from "../src/index.ts";
 

@@ -63,7 +63,7 @@ git clone https://github.com/runesleo/polymarket-toolkit.git && cd polymarket-to
 | 命令 | 作用 |
 |------|------|
 | `pm profile` | LB PnL + 持仓样本 + Brier 提示 |
-| `pm activity` | Activity 分页 + **~4000 行上限警告** |
+| `pm activity` | Activity 分页（v2 游标）+ 未读完警告 |
 | `pm scan` | 按 24h 成交量 + spread 扫市场 |
 | `pm updown` | Crypto updown 事件字段 / resolution 来源 |
 | `pm v2-check` | V2 CTF split/merge 清单 + activity 样本 |
@@ -159,7 +159,7 @@ npx tsx examples/15-redeem-watchdog.ts 0x63ce342161250d705dc0b16df89036c8e5f9ba9
 
 ## 已知限制
 
-- Activity API 约 **4000 行上限**：继续翻页可能返回重复 JSON — 用 `pm activity` / `fetchActivityPages` 或 `polymarket-pnl` 的 `pagination_incomplete` 标记
+- Activity 翻页：Data API v1 约 4000 行就会卡住，v2 游标没有这个上限；`pm activity` / `fetchActivityPages` 在页数上限前没读完时仍会标记为不完整
 - 用户名 → 地址自动解析仅适用于排行榜用户
 - `pm pnl-check` = LB 快照，**不是** 审计级 PnL
 
@@ -204,11 +204,11 @@ CLI、MCP server 和 skills 都在你自己的电脑上运行，只读取公开�
 
 | 内容 | 发往哪里 |
 |---|---|
-| 盈亏、成交量、排行榜排名 | `lb-api.polymarket.com` |
+| 盈亏、成交量、排行榜排名 | `data-api.polymarket.com`（`/v2/leaderboard`） |
 | 持仓、活动记录、成交 | `data-api.polymarket.com` |
 | 市场和事件信息 | `gamma-api.polymarket.com` |
 | 订单簿和价格 | `clob.polymarket.com` |
-| 官方 PnL 曲线（TypeScript 库） | `user-pnl-api.polymarket.com` |
+| 官方 PnL 曲线（TypeScript 库） | `data-api.polymarket.com`（`/v2/user-pnl`） |
 | 实时订单簿推送（TypeScript 库和示例） | `wss://ws-subscriptions-clob.polymarket.com` |
 | 链上 pUSD 余额和区块时间（`pm cashflow`） | 公共 Polygon RPC，默认 `polygon.gateway.tenderly.co`，也可以用 `--rpc` 换成你自己的 |
 

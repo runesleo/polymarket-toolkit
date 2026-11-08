@@ -25,17 +25,17 @@ The skill requires a **0x proxy wallet address**. Users may provide:
 
 ### When user provides a username or URL (not 0x address)
 
-**Step 1: Try leaderboard lookup** — Search `lb-api.polymarket.com/profit` to resolve username → address.
+**Step 1: Try leaderboard lookup** — Page through the all-time PnL leaderboard (`/v2/leaderboard`) to resolve username → address.
 
 ```bash
-# Paginate through the leaderboard searching for the username
-# Start with offset=0, increment by 500 until found or no more results
-curl -s "https://lb-api.polymarket.com/profit?window=all&limit=500&offset=0"
+# Paginate through the leaderboard searching for the username.
+# First page, then repeat with &cursor=<pagination.next_cursor> until found or next_cursor is null.
+curl -s "https://data-api.polymarket.com/v2/leaderboard?time_period=all&sort_by=PNL&limit=500"
 ```
 
-Response is an array of objects with `name`, `pseudonym`, and `proxyWallet` fields. Search for a case-insensitive match on `name` or `pseudonym`.
+Response is `{ "data": [...], "pagination": { "next_cursor": ... } }`; each row has `user_name` and `user_id` (the proxy wallet). Search for a case-insensitive match on `user_name`.
 
-- **Found** → use the `proxyWallet` as the 0x address, continue to Step 1 of execution
+- **Found** → use the `user_id` as the 0x address, continue to Step 1 of execution
 - **Not found after 3 pages (1500 users)** → the account is likely unranked, fall back to Step 2
 
 **Step 2: Manual fallback** (only if leaderboard lookup fails)
@@ -53,10 +53,19 @@ All endpoints are public, no authentication needed.
 
 | Endpoint | Base URL | Purpose |
 |----------|----------|---------|
-| LB API | `https://lb-api.polymarket.com` | PnL, volume, rankings |
-| Data API | `https://data-api.polymarket.com` | Positions, activity, trades |
+| Data API v2 | `https://data-api.polymarket.com/v2` | PnL, volume, rankings (`/leaderboard`), positions, activity, trades |
 | CLOB API | `https://clob.polymarket.com` | Orderbook, market prices |
 | Gamma API | `https://gamma-api.polymarket.com` | Market metadata, events, categories |
+
+Data API v1 (bare `/positions`, `/activity`, `/v1/leaderboard`) and `lb-api.polymarket.com` answer HTTP 410 since November 2026. Every v2 list response is wrapped as `{ "data": [...], "pagination": { "next_cursor": ... } }`; page by passing `cursor=<next_cursor>` together with the original parameters, never `offset` (a 400 on v2). v2 fields are snake_case. The rest of this skill names fields by their v1 spelling — read them from v2 as:
+
+| Name used below | v2 field |
+|---|---|
+| `amount` (PnL), `name` | `pnl`, `user_name` (leaderboard) |
+| `size`, `avgPrice`, `curPrice` | `current_size`, `avg_price`, `current_price` |
+| `initialValue`, `currentValue`, `cashPnl`, `percentPnl` | `entry_cost_usdc`, `current_value`, `unrealized_pnl`, `percent_pnl` |
+| `totalBought`, `realizedPnl`, `endDate`, `eventSlug` | `total_size`, `realized_pnl`, `end_date`, `event_slug` |
+| `usdcSize`, `conditionId`, `asset` | `usdc_size`, `condition_id`, `token_id` (activity / trades) |
 
 ## Execution Steps
 
@@ -65,26 +74,26 @@ Run steps 1-4 in parallel where possible to minimize latency.
 ### Step 1: PnL Snapshot
 
 ```bash
-curl -s "https://lb-api.polymarket.com/profit?window=all&address={ADDRESS}"
+curl -s "https://data-api.polymarket.com/v2/leaderboard?user={ADDRESS}&time_period=all"
 ```
 
-Response is an array. Extract `[0].amount` for total PnL, `[0].name` for username.
+Response is `{ "data": { ... } }` (`data: null` for an unknown wallet). Extract `data.pnl` for total PnL, `data.user_name` for username.
 
-NOTE: lb-api only returns `amount` (total PnL). It does NOT return invested/numTrades/numWins. Those must be computed from positions (Step 2) and activity (Step 3).
+NOTE: the leaderboard only returns `pnl` and `volume` (plus ranks). It does NOT return invested/numTrades/numWins. Those must be computed from positions (Step 2) and activity (Step 3). A `pnl` of exactly 0 next to a non-zero `volume` is a not-yet-computed value, not a break-even wallet — show it as N/A.
 
 Also fetch time-windowed PnL for trend:
 ```bash
-curl -s "https://lb-api.polymarket.com/profit?window=7d&address={ADDRESS}"
-curl -s "https://lb-api.polymarket.com/profit?window=30d&address={ADDRESS}"
+curl -s "https://data-api.polymarket.com/v2/leaderboard?user={ADDRESS}&time_period=week"
+curl -s "https://data-api.polymarket.com/v2/leaderboard?user={ADDRESS}&time_period=month"
 ```
 
 ### Step 2: Current Positions
 
 ```bash
-curl -s "https://data-api.polymarket.com/positions?user={ADDRESS}&sizeThreshold=0&limit=100&offset=0"
+curl -s "https://data-api.polymarket.com/v2/positions?user={ADDRESS}&limit=100"
 ```
 
-Paginate with `offset` parameter: if response returns exactly 100 records, fetch next page with `offset=100`, `offset=200`, etc. until fewer than 100 returned.
+Paginate with the cursor: while `pagination.next_cursor` is not null, fetch the same URL plus `&cursor={next_cursor}`. The default status (`OPEN`) includes settled-but-unredeemed rows, which the win-rate buckets below rely on.
 
 Each position object contains:
 
@@ -137,8 +146,10 @@ For inactive accounts, the positions API may return very few records (settled po
 ### Step 3: Activity History
 
 ```bash
-curl -s "https://data-api.polymarket.com/activity?user={ADDRESS}&limit=500"
+curl -s "https://data-api.polymarket.com/v2/activity?user={ADDRESS}&limit=500&start=1"
 ```
+
+`start=1` asks for the whole history; without it v2 only reaches three years back.
 
 IMPORTANT: You MUST paginate to get complete data. Large accounts have 10,000+ records. 500 records is NOT enough for an accurate profile.
 
@@ -146,10 +157,10 @@ IMPORTANT: You MUST paginate to get complete data. Large accounts have 10,000+ r
 
 ```
 Loop:
-  1. First request: /activity?user={ADDRESS}&limit=500
-  2. Get `timestamp` of the LAST record in the response
-  3. Next request: /activity?user={ADDRESS}&limit=500&end={last_timestamp}
-  4. Repeat until response returns fewer than 500 records (= last page)
+  1. First request: /v2/activity?user={ADDRESS}&limit=500&start=1
+  2. Read `pagination.next_cursor` from the response
+  3. Next request: the same URL plus &cursor={next_cursor} (keep user/limit/start — a cursor alone is a 400)
+  4. Repeat until next_cursor is null (= last page)
   5. Merge all results
 ```
 
@@ -325,12 +336,12 @@ Output the complete profile in this format:
 
 ## Important Notes
 
-- **PnL from lb-api is the ground truth**. Use it as the primary source. Position-level `cashPnl` may differ due to SPLIT/MERGE accounting.
-- **Activity pagination**: use `end` timestamp, never `offset`. Do NOT deduplicate — same txHash with multiple records means multiple fills in one transaction.
+- **PnL from the v2 leaderboard is the ground truth**. Use it as the primary source. Position-level `cashPnl` may differ due to SPLIT/MERGE accounting.
+- **Activity pagination**: follow `next_cursor`, never `offset` (a 400 on v2). Do NOT deduplicate — same txHash with multiple records means multiple fills in one transaction.
 - **Always paginate ALL activity records**. Partial data produces inaccurate profiles. Show pagination progress to the user (e.g. "Fetching activity... page 5, 2500 records so far").
 - **Category mapping**: use `eventSlug` from positions to query Gamma API. Category comes from the event's `tags` or `category` field. If Gamma is slow, infer from market title keywords (BTC/ETH/crypto → Crypto, Trump/election → Politics, NBA/FIFA → Sports, temperature/weather → Weather).
 - **All monetary values in USD**, round to 2 decimal places.
 - **Address format**: APIs accept both checksummed and lowercase. Normalize to lowercase.
-- **lb-api may require proxy** in some regions. data-api and gamma-api work globally.
+- **Region**: data-api and gamma-api are public; if a request answers HTTP 451 (geo-blocked), retry from another region rather than reading it as "no data".
 - **Rate limits**: No documented limits, but keep requests reasonable (<10 concurrent). Add **500ms delay** between sequential pagination calls. If a request returns empty or non-JSON, retry once after 2 seconds.
-- **lb-api 7d/30d**: May return empty array `[]` for inactive accounts. Display as "N/A" instead of $0.
+- **week / month PnL**: may come back as `data: null` or `pnl: 0` for inactive accounts. Display as "N/A" instead of $0.

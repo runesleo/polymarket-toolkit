@@ -2,7 +2,7 @@
 // Problem: Data API activity 分页入口不直观；本 demo 只取第一页验证连通与字段。
 // Run: npx tsx examples/03-fetch-activity-page.ts
 // API: fetchActivityPage — GET /activity?user=&limit=&type?&end?
-// Notes: 大账户用 fetchActivityPages 或 pm activity — 见 examples/16 · issue #1 ~4000 cap。
+// Notes: 大账户用 fetchActivityPages 或 pm activity — 见 examples/16 · v2 按游标翻页（v1 的 ~4000 行上限已不存在）。
 
 import { fetchActivityPage } from "../src/index.ts";
 

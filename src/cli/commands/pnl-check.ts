@@ -22,7 +22,7 @@ export async function runPnlCheck(argv: string[]): Promise<void> {
     address,
     name,
     lbPnlAllTime: lbPnl,
-    lbSource: "lb-api.polymarket.com/profit?window=all",
+    lbSource: "data-api.polymarket.com/v2/leaderboard?time_period=all",
     activitySample: {
       tradeRowsFirstPage: (tradePage as unknown[]).length,
       makerRebateRowsFirstPage: (rebatePage as unknown[]).length,

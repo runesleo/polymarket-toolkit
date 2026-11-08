@@ -62,7 +62,7 @@ Prefer `./bin/pm` from repo root (no install step). Or: `npm run pm -- profile �
 | Command | What it does |
 |---------|--------------|
 | `pm profile` | LB PnL + open positions sample + Brier hint |
-| `pm activity` | Activity pagination + **~4000 row cap warnings** |
+| `pm activity` | Activity pagination (v2 cursor) + incomplete-scan warnings |
 | `pm scan` | Top markets by 24h volume + spread |
 | `pm updown` | Crypto updown event fields / resolution source |
 | `pm v2-check` | V2 CTF split/merge checklist + activity sample |
@@ -84,7 +84,7 @@ Audit-grade PnL (Python): `python3 skills/polymarket-pnl/compute_precise_pnl.py 
 ./bin/pm fees 0xYourProxy
 ```
 
-> **Polymarket's own PnL — profile, `lb-api`, the `user-pnl` curve — is *pre-fee*.
+> **Polymarket's own PnL — profile, the leaderboard, the `user-pnl` curve — is *pre-fee*.
 > A cashflow replay is *post-fee*. `gap ≈ lifetime taker fees − maker rebates`.**
 
 The fee is already in `/activity`: `usdcSize` is **not** `size × price`, and the
@@ -338,7 +338,7 @@ New to Polymarket? [Create an account here](https://polymarket.com/?r=githuball&
 | Profile URL | `polymarket.com/profile/Theo4` | Auto-resolve via leaderboard |
 | Username | `Theo4` | Auto-resolve via leaderboard |
 
-Username lookup works for all leaderboard-ranked users (auto-resolved via `lb-api`). Unranked accounts (zero trading history) require the 0x address directly.
+Username lookup works for all leaderboard-ranked users (auto-resolved via the Data API v2 leaderboard). Unranked accounts (zero trading history) require the 0x address directly.
 
 ### Data sources
 
@@ -346,8 +346,7 @@ All public, no authentication required:
 
 | API | What it provides |
 |-----|-----------------|
-| `lb-api.polymarket.com` | PnL, leaderboard rankings |
-| `data-api.polymarket.com` | Positions, activity history |
+| `data-api.polymarket.com/v2` | PnL, leaderboard rankings, positions, activity history |
 | `gamma-api.polymarket.com` | Market metadata, categories, tags |
 
 ### Known limitations
@@ -356,8 +355,8 @@ All public, no authentication required:
 - Category mapping uses Gamma API tags + keyword fallback (not 100% accurate)
 - Top Wins/Losses uses position-level cashPnl (approximate, not per-trade)
 - Large accounts (10K+ trades) may take 30+ seconds to paginate
-- lb-api 7d/30d PnL may return empty for inactive accounts
-- **Activity API ~4000 row cap:** continuing pagination may return identical JSON — use `pm activity` / `fetchActivityPages` or `polymarket-pnl` with `pagination_incomplete`
+- Week / month leaderboard PnL may be empty (or 0 before Polymarket computes it) for inactive accounts
+- **Activity paging:** Data API v1 stalled around ~4000 rows; v2's cursor does not. `pm activity` / `fetchActivityPages` still report a scan cut short by the page limit as incomplete
 
 ---
 
@@ -548,11 +547,11 @@ When you look up an address or a market, requests go only to these places:
 
 | What | Where it goes |
 |---|---|
-| Profit, volume, and leaderboard rankings | `lb-api.polymarket.com` |
+| Profit, volume, and leaderboard rankings | `data-api.polymarket.com` (`/v2/leaderboard`) |
 | Positions, activity, and trades | `data-api.polymarket.com` |
 | Market and event metadata | `gamma-api.polymarket.com` |
 | Order books and prices | `clob.polymarket.com` |
-| Official PnL curve (TypeScript library) | `user-pnl-api.polymarket.com` |
+| Official PnL curve (TypeScript library) | `data-api.polymarket.com` (`/v2/user-pnl`) |
 | Live order book stream (TypeScript library and examples) | `wss://ws-subscriptions-clob.polymarket.com` |
 | On-chain pUSD balance and block times (`pm cashflow`) | A public Polygon RPC, `polygon.gateway.tenderly.co` by default, or the URL you pass with `--rpc` |
 

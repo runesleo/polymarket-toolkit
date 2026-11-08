@@ -29,10 +29,10 @@ export async function runV2Check(argv: string[]): Promise<void> {
       throw new Error("Optional address must be 0x… proxy wallet");
     }
     const [merges, splits, conversions] = await Promise.all([
-      // MERGE/SPLIT can only be read in ASC, which returns oldest-first, so a
-      // three-page sample would report a 2021 timestamp as the latest merge.
-      // Ten pages of 500 covers the API's whole 5000-row offset cap, which puts
-      // the real newest row in reach for every wallet below it.
+      // MERGE/SPLIT are read in ASC (see ACTIVITY_TYPES_NEEDING_ASC), which
+      // returns oldest-first, so a three-page sample would report a 2021
+      // timestamp as the latest merge. Ten pages of 500 reach the newest row
+      // for every wallet with up to 5000 of them.
       fetchActivityPages(address, { limit: 500, maxPages: 10, type: "MERGE" }),
       fetchActivityPages(address, { limit: 500, maxPages: 10, type: "SPLIT" }),
       fetchActivityPages(address, { limit: 200, maxPages: 3, type: "CONVERSION" }),
