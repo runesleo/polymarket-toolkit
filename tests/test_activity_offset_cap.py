@@ -1,175 +1,85 @@
-"""Regression tests for the /activity offset cap.
+"""Regressions for the former offset-cap failure, now using v2 cursor walks.
 
-Measured 2026-08-18: /activity rejects offset > 5000 with a 400, and the cap is
-on `offset` alone — offset=5000&limit=500 is fine, offset=5001&limit=499 is not,
-offset=0&limit=5501 is fine. /positions does not share the cap (offset=9000
-returns 200), which is why POSITIONS_OFFSET_CAP stays at 9500.
-
-The bug these pin down: the constant was 9500, and the cap was checked only
-after `offset += len(records)`, so the first over-cap offset was still sent. A
-400 is in neither the retry set nor a fallback path, so a wallet with more than
-5000 rows of one activity type failed the whole address instead of degrading to
-the timestamp cursor.
+The old 5000-row activity cap and timestamp fallback must never reappear.
+Compatibility helper names remain callable but issue cursor requests only.
 """
-
-import importlib.util
-import sys
 import unittest
-from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 
-
-MODULE_PATH = Path(__file__).resolve().parents[1] / "skills" / "polymarket-pnl" / "compute_precise_pnl.py"
-SPEC = importlib.util.spec_from_file_location("compute_precise_pnl_offset", MODULE_PATH)
-compute_precise_pnl = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = compute_precise_pnl
-SPEC.loader.exec_module(compute_precise_pnl)
+from test_precise_pnl_v2 import ADDRESS, V2API, activity, envelope, pnl
 
 
-CAP = compute_precise_pnl.ACTIVITY_OFFSET_CAP
-PAGE = compute_precise_pnl.PAGE_LIMIT
-
-
-class FakeResponse:
-    def __init__(self, rows):
-        self.rows = rows
-        self.status_code = 200
-
-    def json(self):
-        return self.rows
-
-    def raise_for_status(self):
-        return None
-
-
-class CappedClient:
-    """Serves REDEEM rows the way the real API does: 400 past the offset cap."""
-
-    def __init__(self, total_rows, cap=CAP):
-        self.total_rows = total_rows
-        self.cap = cap
-        self.offsets = []
-
-    def get(self, url, params, timeout):
-        offset = int(params.get("offset", 0))
-        self.offsets.append(offset)
-        if offset > self.cap:
-            request = httpx.Request("GET", url)
-            response = httpx.Response(400, request=request)
-            raise httpx.HTTPStatusError("Bad Request", request=request, response=response)
-        limit = int(params["limit"])
-        rows = [
-            {"timestamp": 1_700_000_000 + i, "usdcSize": "1", "conditionId": f"c{i}"}
-            for i in range(offset, min(offset + limit, self.total_rows))
-        ]
-        return FakeResponse(rows)
-
-
-class ActivityOffsetCapTest(unittest.TestCase):
+class ActivityCursorRegressionTest(unittest.TestCase):
     def setUp(self):
-        self._sleep = compute_precise_pnl.time.sleep
-        compute_precise_pnl.time.sleep = lambda *_: None
+        self.sleep = patch.object(pnl.time, "sleep", return_value=None)
+        self.sleep.start()
+        self.addCleanup(self.sleep.stop)
 
-    def tearDown(self):
-        compute_precise_pnl.time.sleep = self._sleep
+    def test_non_trade_streams_exceed_former_cap_without_losing_same_second_rows(self):
+        for kind in ("REDEEM", "MERGE", "SPLIT"):
+            with self.subTest(kind=kind):
+                api = V2API(activities={kind: [activity(kind, 1)] * 6501})
+                with api.client() as client:
+                    rows, incomplete = pnl.fetch_activity_all(client, ADDRESS, kind)
+                self.assertEqual(len(rows), 6501)
+                self.assertEqual(sum(row["usdcSize"] for row in rows), 6501)
+                self.assertFalse(incomplete)
+                self.assertTrue(all("offset" not in r.url.params for r in api.requests))
+                self.assertTrue(all(r.url.params["sort_direction"] == "ASC" for r in api.requests))
+                self.assertEqual(len(api.requests), 14)
 
-    def test_cap_matches_measured_api_limit(self):
-        self.assertEqual(CAP, 5000)
-        # /positions really does serve offset=9000, so it must NOT be lowered
-        # along with the activity cap.
-        self.assertEqual(compute_precise_pnl.POSITIONS_OFFSET_CAP, 9500)
-
-    def test_never_sends_an_over_cap_offset(self):
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
-        compute_precise_pnl.fetch_activity_all_offset(client, "0xabc", "REDEEM")
-        self.assertTrue(client.offsets, "expected at least one request")
-        self.assertLessEqual(
-            max(client.offsets), CAP,
-            f"sent offset {max(client.offsets)} past the cap of {CAP}",
-        )
-
-    def test_reaching_the_cap_reports_hit_cap_instead_of_raising(self):
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
-        items, incomplete, hit_cap = compute_precise_pnl.fetch_activity_all_offset(
-            client, "0xabc", "REDEEM"
-        )
-        self.assertTrue(hit_cap)
-        self.assertTrue(incomplete)
-        self.assertLessEqual(len(items), CAP + PAGE)
-
-    def test_a_400_below_our_cap_degrades_rather_than_failing(self):
-        # Defence in depth: if the API lowers the cap under us, the address must
-        # still complete via the fallback rather than raising.
-        client = CappedClient(total_rows=CAP + 3 * PAGE, cap=1500)
-        _, _, hit_cap = compute_precise_pnl.fetch_activity_all_offset(client, "0xabc", "REDEEM")
-        self.assertTrue(hit_cap)
-
-    def test_non_400_errors_still_propagate(self):
-        class ServerErrorClient(CappedClient):
-            def get(self, url, params, timeout):
-                request = httpx.Request("GET", url)
-                raise httpx.HTTPStatusError(
-                    "Forbidden", request=request, response=httpx.Response(403, request=request)
-                )
-
-        with self.assertRaises(httpx.HTTPStatusError):
-            compute_precise_pnl.fetch_activity_all_offset(
-                ServerErrorClient(total_rows=10), "0xabc", "REDEEM"
-            )
-
-    def test_short_history_never_reaches_the_fallback(self):
-        client = CappedClient(total_rows=1200)
-        items, incomplete, hit_cap = compute_precise_pnl.fetch_activity_all_offset(
-            client, "0xabc", "REDEEM"
-        )
-        self.assertEqual(len(items), 1200)
-        self.assertFalse(hit_cap)
+    def test_legacy_helper_names_use_v2_without_offset_or_timestamp_backfill(self):
+        api = V2API(activities={"MERGE": [activity("MERGE", 3)] * 3}, page_cap=2)
+        with api.client() as client:
+            rows, incomplete, hit_cap = pnl.fetch_activity_all_offset(client, ADDRESS, "MERGE")
+        self.assertEqual(sum(row["usdcSize"] for row in rows), 9)
         self.assertFalse(incomplete)
+        self.assertFalse(hit_cap)
+        api2 = V2API(activities={"TRADE": [activity(amount=2)] * 3}, page_cap=2)
+        with api2.client() as client:
+            trades, incomplete = pnl.fetch_activity_all_timestamp(client, ADDRESS, "TRADE")
+        self.assertEqual(sum(row["usdcSize"] for row in trades), 6)
+        self.assertFalse(incomplete)
+        for request in api.requests + api2.requests:
+            self.assertEqual(request.url.path, "/v2/activity")
+            self.assertNotIn("offset", request.url.params)
+            self.assertNotIn("end", request.url.params)
 
-    def _fallback_returning(self, rows, client, activity_type="REDEEM"):
-        called = {}
+    def test_400_is_a_real_v2_error_and_does_not_trigger_an_offset_fallback(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            return httpx.Response(400, json={"error": "invalid cursor"})
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            with self.assertRaises(httpx.HTTPStatusError):
+                pnl.fetch_activity_all(client, ADDRESS, "MERGE")
+        self.assertEqual(len(calls), 1)
 
-        def fake_timestamp(_client, address, a_type, progress_cb=None):
-            called["args"] = (address, a_type)
-            return rows, False
+    def test_failure_after_one_page_never_returns_a_complete_prefix(self):
+        calls = []
+        def handler(request):
+            calls.append(request)
+            if "cursor" not in request.url.params:
+                return httpx.Response(200, json=envelope([activity("REDEEM", 10)], "later"))
+            return httpx.Response(503, json={"error": "unavailable"})
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            with self.assertRaises(httpx.HTTPStatusError):
+                pnl.fetch_activity_all(client, ADDRESS, "REDEEM")
+        self.assertEqual(len(calls), 4)
 
-        original = compute_precise_pnl.fetch_activity_all_timestamp
-        compute_precise_pnl.fetch_activity_all_timestamp = fake_timestamp
-        try:
-            result = compute_precise_pnl.fetch_activity_all(client, "0xabc", activity_type)
-        finally:
-            compute_precise_pnl.fetch_activity_all_timestamp = original
-        return result, called
-
-    def test_hitting_the_cap_falls_back_to_timestamp_pagination(self):
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
-        complete = [{"usdcSize": "1"}] * (CAP + 3 * PAGE)
-        (items, incomplete), called = self._fallback_returning(complete, client)
-
-        self.assertEqual(called.get("args"), ("0xabc", "REDEEM"))
-        self.assertEqual(len(items), CAP + 3 * PAGE)
-        self.assertFalse(
-            incomplete,
-            "the cursor path is complete, so the short-result flag must not leak through",
-        )
-
-    def test_a_shorter_fallback_never_replaces_real_rows(self):
-        # MERGE/SPLIT return an empty list under the cursor path's DESC
-        # ordering. Accepting that would read as "this wallet never merged" and
-        # silently drop its largest cashflow, so a shorter fallback must lose.
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
-        (items, incomplete), _ = self._fallback_returning([], client, activity_type="MERGE")
-
-        self.assertGreater(len(items), 0, "empty fallback must not replace real rows")
-        self.assertTrue(incomplete, "keeping the capped rows must be flagged as incomplete")
-
-    def test_an_equal_length_fallback_is_accepted(self):
-        client = CappedClient(total_rows=CAP + 3 * PAGE)
-        offset_rows, _, _ = compute_precise_pnl.fetch_activity_all_offset(client, "0xabc", "REDEEM")
-        equal = [{"usdcSize": "9"}] * len(offset_rows)
-        (items, _), _ = self._fallback_returning(equal, CappedClient(total_rows=CAP + 3 * PAGE))
-        self.assertEqual(items, equal)
+    def test_nonadjacent_cursor_cycle_keeps_only_the_known_prefix(self):
+        api = V2API(pages={("activity", "SPLIT"): {
+            None: envelope([activity("SPLIT", 1)], "A"),
+            "A": envelope([activity("SPLIT", 2)], "B"),
+            "B": envelope([activity("SPLIT", 1000)], "A"),
+        }})
+        with api.client() as client:
+            rows, incomplete = pnl.fetch_activity_all(client, ADDRESS, "SPLIT")
+        self.assertTrue(incomplete)
+        self.assertEqual(sum(row["usdcSize"] for row in rows), 3)
+        self.assertEqual(len(api.requests), 3)
 
 
 if __name__ == "__main__":

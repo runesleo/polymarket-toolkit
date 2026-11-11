@@ -5,10 +5,11 @@ PnL(trading)  = SUM(SELL) + SUM(REDEEM) + SUM(MERGE) + SUM(REBATE)
                - SUM(BUY) - SUM(SPLIT) + unrealized_position_value
 PnL(inclusive) = PnL(trading) + REWARD + REFERRAL_REWARD + CONVERSION
 
-Note: whether REWARD / REFERRAL_REWARD / CONVERSION are counted by
-Polymarket's official /profit endpoint varies per address. The primary
-`pnl` field only reflects trading cashflow; `pnl_inclusive` adds all
-platform credits for those who want the full picture.
+The original trading/inclusive formulas are preserved. `unrealized` is the
+current value of held positions, not the API's unrealized profit. Completeness
+is scoped to API-served data: unsupported economic events and cursor failures
+are flagged; this is not a full-chain ledger audit. The v2 all-time leaderboard
+is realized-only and is not an accuracy oracle for this marked-value formula.
 
 Usage:
   # Single address
@@ -28,11 +29,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import ssl
 import statistics
 import sys
 import time
-from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -49,20 +50,14 @@ from lib import pm_http  # noqa: E402
 # ── Constants ────────────────────────────────────────────────────────
 
 DATA_API = "https://data-api.polymarket.com"
-LEADERBOARD_API = f"{DATA_API}/v1/leaderboard"
-ACTIVITY_API = f"{DATA_API}/activity"
-POSITIONS_API = f"{DATA_API}/positions"
+LEADERBOARD_API = f"{DATA_API}/v2/leaderboard"
+ACTIVITY_API = f"{DATA_API}/v2/activity"
+COMBO_ACTIVITY_API = f"{DATA_API}/v2/activity/combos"
+POSITIONS_API = f"{DATA_API}/v2/positions"
 
 PAGE_LIMIT = 500
 REQUEST_DELAY = 0.2  # 200ms between requests (rate limit)
 REQUEST_TIMEOUT = 20
-# /activity rejects offset > 5000 with a 400 — measured 2026-08-18, and it is a
-# cap on `offset` alone, not on offset+limit: offset=5000&limit=500 returns 200,
-# offset=5001&limit=499 returns 400, and offset=0&limit=5501 returns 200. The
-# previous 9500 assumed the 10k cap that /positions has; /positions really does
-# serve offset=9000, so the two endpoints differ and POSITIONS_OFFSET_CAP below
-# is correct as-is.
-ACTIVITY_OFFSET_CAP = 5000
 
 
 # ── Data classes ─────────────────────────────────────────────────────
@@ -110,9 +105,10 @@ class PrecisePnL:
     trade_count: int
     computed_at: int  # unix timestamp
     complete: bool = True  # False if any data is incomplete/truncated
-    positions_truncated: bool = False  # True if positions hit API cap
-    pagination_incomplete: bool = False  # True if same-second overflow detected
-    pagination_incomplete_types: list[str] | None = None  # Which activity types hit pagination boundary
+    positions_truncated: bool = False  # True if the position cursor walk was cut short
+    pagination_incomplete: bool = False  # True if an activity cursor walk was cut short
+    pagination_incomplete_types: list[str] | None = None
+    data_incomplete_reasons: list[str] | None = None  # Unsupported/unavailable economics
 
 
 # ── API helpers ──────────────────────────────────────────────────────
@@ -149,141 +145,138 @@ def _fetch_with_retry(
     raise RuntimeError(f"Unreachable: max retries exceeded for {url}")
 
 
-def fetch_activity_all_timestamp(
+def _number(row: dict, key: str) -> float:
+    """Require an available finite amount; v2 null/missing never means zero."""
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"Unavailable or invalid {key}: {value!r}")
+    try:
+        number = float(value)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError(f"Invalid {key}: {value!r}") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"Non-finite {key}: {value!r}")
+    return number
+
+
+def _fetch_v2_page(client: httpx.Client, url: str, params: dict) -> tuple[list[dict], str | None]:
+    body = _fetch_with_retry(client, url, params).json()
+    if not isinstance(body, dict) or not isinstance(body.get("data"), list):
+        raise ValueError(f"Invalid v2 data envelope from {url}")
+    rows = body["data"]
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError(f"Invalid v2 row from {url}")
+    pagination = body.get("pagination")
+    if not isinstance(pagination, dict):
+        raise ValueError(f"Missing v2 pagination from {url}")
+    has_more = pagination.get("has_more")
+    if type(has_more) is not bool:
+        raise ValueError(f"Missing/invalid v2 has_more from {url}")
+    # OpenAPI permits omission of next_cursor only at an explicit terminal page.
+    if "next_cursor" not in pagination and has_more:
+        raise ValueError(f"Missing v2 next_cursor from {url}")
+    cursor = pagination.get("next_cursor")
+    if cursor is not None and (not isinstance(cursor, str) or not cursor.strip()):
+        raise ValueError(f"Invalid v2 next_cursor from {url}")
+    if has_more != (cursor is not None):
+        raise ValueError(f"Inconsistent v2 pagination from {url}")
+    return rows, cursor
+
+
+def _v2_pages(
+    client: httpx.Client,
+    url: str,
+    params: dict,
+    progress_cb: ProgressCallback | None = None,
+    *,
+    label: str,
+    cursor: str | None = None,
+    consumed_cursors: set[str] | None = None,
+    page: int = 0,
+):
+    """Walk opaque cursors, retaining identical fills and all short/empty pages."""
+    consumed = consumed_cursors if consumed_cursors is not None else set()
+    while True:
+        query = dict(params)  # Feed cursors do not carry their filters.
+        if cursor is not None:
+            query["cursor"] = cursor
+        rows, next_cursor = _fetch_v2_page(client, url, query)
+        if cursor is not None:
+            consumed.add(cursor)
+        page += 1
+        incomplete = next_cursor is not None and next_cursor in consumed
+        if progress_cb is not None:
+            progress_cb({
+                "activity_type": label, "page": page, "rows": len(rows),
+                "mode": "cursor", "cursor": cursor,
+            })
+        # A cycling page may repeat earlier cashflows. Keep only the known prefix.
+        yield ([] if incomplete else rows), next_cursor, incomplete
+        if incomplete or next_cursor is None:
+            return
+        cursor = next_cursor
+        time.sleep(REQUEST_DELAY)
+
+
+def _activity_params(address: str, activity_type: str, limit: int | None = None) -> dict:
+    return {
+        "user": address, "type": activity_type, "start": 1,
+        "sort_direction": "ASC", "limit": PAGE_LIMIT if limit is None else limit,
+    }
+
+
+def _activity_row(row: dict, activity_type: str) -> dict:
+    if row.get("type") != activity_type:
+        raise ValueError(f"Unexpected activity type for {activity_type}: {row.get('type')!r}")
+    if activity_type == "TRADE" and row.get("side") not in ("BUY", "SELL"):
+        raise ValueError(f"Invalid TRADE side: {row.get('side')!r}")
+    mapped = dict(row)  # Keep is_combo and any future provenance fields.
+    for source, target in {
+        "proxy_wallet": "proxyWallet", "condition_id": "conditionId",
+        "transaction_hash": "transactionHash", "token_id": "asset",
+        "outcome_index": "outcomeIndex", "event_slug": "eventSlug",
+    }.items():
+        if source in row:
+            mapped[target] = row[source]
+    mapped["usdcSize"] = _number(row, "usdc_size")
+    return mapped
+
+
+def fetch_activity_all(
     client: httpx.Client,
     address: str,
     activity_type: str,
     progress_cb: ProgressCallback | None = None,
 ) -> tuple[list[dict], bool]:
-    """Fetch activity records with end-timestamp pagination.
-
-    Uses end=<oldest_ts-1> for pagination (exclusive cursor).
-
-    Important: do NOT deduplicate same-tx/same-amount TRADE rows. Maker fills can
-    legitimately produce multiple indistinguishable cash-flow records within the
-    same second, and collapsing them understates true realized PnL.
-
-    Trade-off: when a full page ends on a second that contains multiple records,
-    the Data API cannot be paginated losslessly by timestamp alone. In that case
-    we continue with an exclusive cursor and mark the result incomplete.
-
-    Returns:
-        (items, pagination_incomplete): items list and whether pagination may have missed records.
-    """
+    """Fetch a full v2 activity stream; False means no cursor truncation detected."""
     items: list[dict] = []
-    end: int | None = None
-    page = 0
-    pagination_incomplete = False
+    incomplete = False
+    for rows, _, incomplete in _v2_pages(
+        client, ACTIVITY_API, _activity_params(address, activity_type),
+        progress_cb, label=activity_type,
+    ):
+        items.extend(_activity_row(row, activity_type) for row in rows)
+    return items, incomplete
 
-    def fetch_exact_second(ts: int) -> list[dict] | None:
-        """Attempt to fetch all activity rows at an exact second using bounded offset pagination.
 
-        Returns `None` if the API does not appear to support the exact-second query for this address/type.
-        """
-        exact_items: list[dict] = []
-        offset = 0
-        while True:
-            params = {
-                "user": address,
-                "type": activity_type,
-                "limit": PAGE_LIMIT,
-                "start": ts,
-                "end": ts,
-                "offset": offset,
-            }
-            resp = _fetch_with_retry(client, ACTIVITY_API, params)
-            records = resp.json()
-            if not records:
-                return exact_items if exact_items else None
-            # Some users appear not to support exact-second replay consistently.
-            # Treat mixed timestamps as unsupported instead of corrupting pagination.
-            if any(r.get("timestamp") != ts for r in records):
-                return None
-            exact_items.extend(records)
-            if len(records) < PAGE_LIMIT:
-                return exact_items
-            offset += len(records)
-            if offset > ACTIVITY_OFFSET_CAP:
-                return None
-            time.sleep(REQUEST_DELAY)
+def fetch_activity_all_timestamp(
+    client: httpx.Client, address: str, activity_type: str,
+    progress_cb: ProgressCallback | None = None,
+) -> tuple[list[dict], bool]:
+    """Compatibility name; v2 uses lossless cursors, never timestamp subtraction."""
+    return fetch_activity_all(client, address, activity_type, progress_cb)
 
-    while True:
-        params: dict = {
-            "user": address,
-            "type": activity_type,
-            "limit": PAGE_LIMIT,
-        }
-        if end is not None:
-            params["end"] = end
 
-        resp = _fetch_with_retry(client, ACTIVITY_API, params)
-        records = resp.json()
-        if progress_cb is not None:
-            progress_cb({
-                "activity_type": activity_type,
-                "page": page + 1,
-                "rows": len(records),
-                "mode": "timestamp",
-                "boundary_end": end,
-            })
+def fetch_activity_all_offset(
+    client: httpx.Client, address: str, activity_type: str,
+    progress_cb: ProgressCallback | None = None,
+) -> tuple[list[dict], bool, bool]:
+    """Compatibility name; no offset requests/cap exist in v2."""
+    rows, incomplete = fetch_activity_all(client, address, activity_type, progress_cb)
+    return rows, incomplete, False
 
-        if not records:
-            break
 
-        items.extend(records)
-
-        page += 1
-
-        oldest = min(r["timestamp"] for r in records)
-        oldest_count = sum(1 for r in records if r["timestamp"] == oldest)
-
-        # Exclusive cursor avoids boundary duplication but means we may miss
-        # additional same-second rows if the page filled exactly at the boundary.
-        if len(records) == PAGE_LIMIT and oldest_count > 0:
-            exact_second_records = fetch_exact_second(oldest)
-            if exact_second_records is None:
-                print(
-                    f"  ⚠️ {activity_type} page boundary has {oldest_count} rows at ts={oldest}; "
-                    "exact-second replay unsupported, result may be INCOMPLETE"
-                , flush=True)
-                pagination_incomplete = True
-            elif len(exact_second_records) > oldest_count:
-                missing_count = len(exact_second_records) - oldest_count
-                print(
-                    f"  ⚠️ {activity_type} page boundary at ts={oldest} had {len(exact_second_records)} rows; "
-                    f"backfilling {missing_count} same-second records"
-                , flush=True)
-                seen_boundary = Counter(
-                    json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    for row in records
-                    if row["timestamp"] == oldest
-                )
-                for row in exact_second_records:
-                    if row["timestamp"] != oldest:
-                        continue
-                    row_key = json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    if seen_boundary[row_key] > 0:
-                        seen_boundary[row_key] -= 1
-                        continue
-                    items.append(row)
-            elif len(exact_second_records) < oldest_count:
-                print(
-                    f"  ⚠️ {activity_type} exact-second replay returned only {len(exact_second_records)} rows "
-                    f"for boundary ts={oldest}; result may be INCOMPLETE"
-                , flush=True)
-                pagination_incomplete = True
-
-        next_end = oldest - 1
-        if next_end < 0:
-            break
-        end = next_end
-
-        if len(records) < PAGE_LIMIT:
-            break
-
-        time.sleep(REQUEST_DELAY)
-
-    return items, pagination_incomplete
+CHECKPOINT_SCHEMA = "data-api-v2-cursor-v1"
 
 
 def compute_trade_cashflow_with_checkpoint(
@@ -293,279 +286,94 @@ def compute_trade_cashflow_with_checkpoint(
     checkpoint: Checkpoint | None = None,
     progress_cb: ProgressCallback | None = None,
 ) -> dict:
-    state = checkpoint.load() if checkpoint is not None else {}
-    total_buy = float(state.get("total_buy", 0.0) or 0.0)
-    total_sell = float(state.get("total_sell", 0.0) or 0.0)
-    trade_count = int(state.get("trade_count", 0) or 0)
-    buy_count = int(state.get("buy_count", 0) or 0)
-    sell_count = int(state.get("sell_count", 0) or 0)
-    page = int(state.get("page", 0) or 0)
-    end = state.get("next_end")
-    pagination_incomplete = bool(state.get("pagination_incomplete", False))
+    """Resume TRADE cursor pages; v1 totals/cursors are never reused."""
+    address = address.lower()
+    try:
+        saved = checkpoint.load() if checkpoint is not None else {}
+    except (AttributeError, TypeError) as exc:
+        raise ValueError("Invalid checkpoint document") from exc
+    if not isinstance(saved, dict):
+        raise ValueError("Invalid checkpoint state: expected an object")
+    compatible = bool(saved) and (
+        saved.get("schema") == CHECKPOINT_SCHEMA
+        and saved.get("address") == address
+        and saved.get("activity_type") == "TRADE"
+    )
+    if saved and not compatible:
+        print("  WARNING: incompatible TRADE checkpoint; restarting from the first v2 page", flush=True)
+    state = dict(saved) if compatible else {}
+    required = {
+        "total_buy", "total_sell", "trade_count", "buy_count", "sell_count",
+        "page", "cursor", "consumed_cursors", "done", "pagination_incomplete",
+        "data_incomplete_reasons",
+    }
+    if state and not required.issubset(state):
+        raise ValueError("Incomplete v2 TRADE checkpoint state")
+    reasons = state.get("data_incomplete_reasons", [])
+    if (not isinstance(reasons, list)
+            or any(not isinstance(reason, str) or not reason.strip() for reason in reasons)):
+        raise ValueError("Invalid checkpoint data_incomplete_reasons")
+    totals = {
+        "total_buy": _number(state, "total_buy") if state else 0.0,
+        "total_sell": _number(state, "total_sell") if state else 0.0,
+        "trade_count": state.get("trade_count", 0),
+        "buy_count": state.get("buy_count", 0),
+        "sell_count": state.get("sell_count", 0),
+        "page": state.get("page", 0),
+        "pagination_incomplete": state.get("pagination_incomplete", False),
+        "data_incomplete_reasons": list(reasons),
+        "resumed": compatible,
+    }
+    for key in ("trade_count", "buy_count", "sell_count", "page"):
+        if type(totals[key]) is not int or totals[key] < 0:
+            raise ValueError(f"Invalid checkpoint {key}")
+    if totals["trade_count"] != totals["buy_count"] + totals["sell_count"]:
+        raise ValueError("Inconsistent checkpoint trade counts")
+    cursor = state.get("cursor")
+    done = state.get("done", False)
+    consumed_list = state.get("consumed_cursors", [])
+    if (type(done) is not bool or type(totals["pagination_incomplete"]) is not bool
+            or not isinstance(consumed_list, list)
+            or any(not isinstance(c, str) or not c for c in consumed_list)
+            or (cursor is not None and (not isinstance(cursor, str) or not cursor))):
+        raise ValueError("Invalid v2 TRADE checkpoint cursor state")
+    consumed = set(consumed_list)
+    if state and (not done and (cursor is None or cursor in consumed)):
+        raise ValueError("Incomplete checkpoint has no valid next cursor")
+    if (done and cursor is not None and not totals["pagination_incomplete"]):
+        raise ValueError("Terminal checkpoint still has an unconsumed cursor")
+    if totals["pagination_incomplete"] and not done:
+        raise ValueError("Truncated checkpoint must be terminal")
+    if done:
+        return totals
 
-    def fetch_exact_second(ts: int) -> list[dict] | None:
-        exact_items: list[dict] = []
-        offset = 0
-        while True:
-            exact_params = {
-                "user": address,
-                "type": "TRADE",
-                "limit": PAGE_LIMIT,
-                "start": ts,
-                "end": ts,
-                "offset": offset,
-            }
-            exact_resp = _fetch_with_retry(client, ACTIVITY_API, exact_params)
-            exact_records = exact_resp.json()
-            if not exact_records:
-                return exact_items if exact_items else None
-            if any(r.get("timestamp") != ts for r in exact_records):
-                return None
-            exact_items.extend(exact_records)
-            if len(exact_records) < PAGE_LIMIT:
-                return exact_items
-            offset += len(exact_records)
-            if offset > ACTIVITY_OFFSET_CAP:
-                return None
-            time.sleep(REQUEST_DELAY)
-
-    if checkpoint is not None and (state.get("address") != address or state.get("activity_type") != "TRADE"):
-        total_buy = total_sell = 0.0
-        trade_count = buy_count = sell_count = 0
-        page = 0
-        end = None
-        pagination_incomplete = False
-
-    while True:
-        params: dict = {
-            "user": address,
-            "type": "TRADE",
-            "limit": PAGE_LIMIT,
-        }
-        if end is not None:
-            params["end"] = end
-
-        resp = _fetch_with_retry(client, ACTIVITY_API, params)
-        records = resp.json()
-        if progress_cb is not None:
-            progress_cb({
-                "activity_type": "TRADE",
-                "page": page + 1,
-                "rows": len(records),
-                "mode": "timestamp",
-                "boundary_end": end,
-            })
-
-        if not records:
-            break
-
-        buys = [t for t in records if t.get("side") == "BUY"]
-        sells = [t for t in records if t.get("side") == "SELL"]
-        total_buy += sum(float(t.get("usdcSize", 0)) for t in buys)
-        total_sell += sum(float(t.get("usdcSize", 0)) for t in sells)
-        trade_count += len(records)
-        buy_count += len(buys)
-        sell_count += len(sells)
-        page += 1
-
-        oldest = min(r["timestamp"] for r in records)
-        oldest_count = sum(1 for r in records if r["timestamp"] == oldest)
-
-        if len(records) == PAGE_LIMIT and oldest_count > 0:
-            exact_records = fetch_exact_second(oldest)
-            if exact_records is not None:
-                seen_boundary = Counter(
-                    json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    for row in records
-                    if row["timestamp"] == oldest
-                )
-                missing_rows = []
-                for row in exact_records:
-                    row_key = json.dumps(row, sort_keys=True, separators=(",", ":"))
-                    if seen_boundary[row_key] > 0:
-                        seen_boundary[row_key] -= 1
-                        continue
-                    missing_rows.append(row)
-                if missing_rows:
-                    total_buy += sum(float(t.get("usdcSize", 0)) for t in missing_rows if t.get("side") == "BUY")
-                    total_sell += sum(float(t.get("usdcSize", 0)) for t in missing_rows if t.get("side") == "SELL")
-                    trade_count += len(missing_rows)
-                    buy_count += sum(1 for t in missing_rows if t.get("side") == "BUY")
-                    sell_count += sum(1 for t in missing_rows if t.get("side") == "SELL")
-                    print(
-                        f"  ⚠️ TRADE page boundary at ts={oldest} had {len(exact_records)} rows; "
-                        f"backfilling {len(missing_rows)} same-second records",
-                        flush=True,
-                    )
-            else:
-                print(
-                    f"  ⚠️ TRADE page boundary has {oldest_count} rows at ts={oldest}; "
-                    "exact-second replay unsupported, result may be INCOMPLETE",
-                    flush=True,
-                )
-                pagination_incomplete = True
-
-        next_end = oldest - 1
+    for rows, next_cursor, incomplete in _v2_pages(
+        client, ACTIVITY_API, _activity_params(address, "TRADE"),
+        progress_cb, label="TRADE", cursor=cursor,
+        consumed_cursors=consumed, page=totals["page"],
+    ):
+        records = [_activity_row(row, "TRADE") for row in rows]
+        # Validate the whole page before changing totals or the durable cursor.
+        buys = [row for row in records if row["side"] == "BUY"]
+        sells = [row for row in records if row["side"] == "SELL"]
+        totals["total_buy"] += sum(row["usdcSize"] for row in buys)
+        totals["total_sell"] += sum(row["usdcSize"] for row in sells)
+        totals["buy_count"] += len(buys)
+        totals["sell_count"] += len(sells)
+        totals["trade_count"] += len(records)
+        totals["page"] += 1
+        totals["pagination_incomplete"] |= incomplete
+        if any(row.get("is_combo") is True for row in records):
+            totals["data_incomplete_reasons"] = ["combo_positions_not_replayed"]
         if checkpoint is not None:
             checkpoint.update(
-                address=address,
-                activity_type="TRADE",
-                next_end=next_end,
-                total_buy=round(total_buy, 10),
-                total_sell=round(total_sell, 10),
-                trade_count=trade_count,
-                buy_count=buy_count,
-                sell_count=sell_count,
-                page=page,
-                pagination_incomplete=pagination_incomplete,
+                schema=CHECKPOINT_SCHEMA, address=address, activity_type="TRADE",
+                cursor=next_cursor, consumed_cursors=sorted(consumed),
+                done=next_cursor is None or incomplete,
+                **{key: value for key, value in totals.items() if key != "resumed"},
             )
-        if next_end < 0:
-            break
-        end = next_end
-
-        if len(records) < PAGE_LIMIT:
-            break
-
-        time.sleep(REQUEST_DELAY)
-
-    return {
-        "total_buy": total_buy,
-        "total_sell": total_sell,
-        "trade_count": trade_count,
-        "buy_count": buy_count,
-        "sell_count": sell_count,
-        "pagination_incomplete": pagination_incomplete,
-        "page": page,
-    }
-
-
-def fetch_activity_all_offset(
-    client: httpx.Client,
-    address: str,
-    activity_type: str,
-    progress_cb: ProgressCallback | None = None,
-) -> tuple[list[dict], bool, bool]:
-    """Fetch activity records with offset pagination.
-
-    This path is preferred when it can complete within the undocumented offset
-    cap because it avoids same-second boundary loss.
-    """
-    items: list[dict] = []
-    offset = 0
-    pagination_incomplete = False
-    hit_cap = False
-
-    while True:
-        # Checked before the request, not after the increment. The old order
-        # meant the first over-cap offset was still sent, and a 400 is in
-        # neither the retry set nor a fallback, so one wallet with >5000 rows of
-        # a single type failed the whole address instead of degrading.
-        if offset > ACTIVITY_OFFSET_CAP:
-            pagination_incomplete = True
-            hit_cap = True
-            break
-
-        params = {
-            "user": address,
-            "type": activity_type,
-            "limit": PAGE_LIMIT,
-            "offset": offset,
-            # Not cosmetic, and not safe to drop: MERGE and SPLIT return an
-            # empty list under the default DESC ordering and real rows under
-            # ASC. An empty list reads as "this wallet never merged", which on
-            # a split/merge wallet silently removes its largest cashflow.
-            "sortDirection": "ASC",
-        }
-        try:
-            resp = _fetch_with_retry(client, ACTIVITY_API, params)
-        except httpx.HTTPStatusError as exc:
-            # Defence in depth: the cap is undocumented, so if it ever moves
-            # below our constant, take the same exit as reaching it rather than
-            # failing the address.
-            if exc.response.status_code != 400:
-                raise
-            pagination_incomplete = True
-            hit_cap = True
-            break
-        records = resp.json()
-        if progress_cb is not None:
-            progress_cb({
-                "activity_type": activity_type,
-                "page": (offset // PAGE_LIMIT) + 1,
-                "rows": len(records),
-                "mode": "offset",
-                "offset": offset,
-            })
-        if not records:
-            break
-
-        items.extend(records)
-
-        if len(records) < PAGE_LIMIT:
-            break
-
-        offset += len(records)
-        time.sleep(REQUEST_DELAY)
-
-    return items, pagination_incomplete, hit_cap
-
-
-def fetch_activity_all(
-    client: httpx.Client,
-    address: str,
-    activity_type: str,
-    progress_cb: ProgressCallback | None = None,
-) -> tuple[list[dict], bool]:
-    """Fetch all activity records with the safest pagination mode per type.
-
-    Offset paging avoids same-second boundary loss, so it is preferred — but it
-    can only reach the first 5000 rows. Past that the timestamp cursor is the
-    only complete path, so reaching the cap re-walks the type from scratch
-    rather than returning a truncated total. Measured on a wallet whose REDEEM
-    history is 10697 rows: the offset path can see 5000 of them, the cursor path
-    returns all 10697.
-    """
-    if activity_type == "TRADE":
-        return fetch_activity_all_timestamp(client, address, activity_type, progress_cb=progress_cb)
-    items, pagination_incomplete, hit_cap = fetch_activity_all_offset(client, address, activity_type, progress_cb=progress_cb)
-    if not hit_cap:
-        return items, pagination_incomplete
-
-    print(
-        f"  ⚠️ {activity_type} passed the {ACTIVITY_OFFSET_CAP}-row offset cap, "
-        "re-fetching with timestamp pagination",
-        flush=True,
-    )
-    cursor_items, cursor_incomplete = fetch_activity_all_timestamp(
-        client, address, activity_type, progress_cb=progress_cb
-    )
-    # The fallback is only allowed to improve on what we already have.
-    #
-    # The offset path sends sortDirection=ASC; the cursor path walks `end`
-    # backwards and so relies on the default DESC. For MERGE and SPLIT those
-    # two are not equivalent — DESC returns *nothing at all*. Measured
-    # 2026-08-18 on one wallet: type=MERGE with sortDirection=ASC returns rows
-    # back to 2020, the same query under DESC (with or without `end`) returns
-    # an empty list, while TRADE and REDEEM are unaffected either way.
-    #
-    # An empty list is indistinguishable from "this wallet never merged", and
-    # that wallet's MERGE total is eight figures. Silently swapping real rows
-    # for zero would be worse than the hard failure this fallback replaced, so
-    # a shorter result is read as "this path cannot see this type" and the
-    # capped-but-real rows are kept, flagged.
-    if len(cursor_items) >= len(items):
-        return cursor_items, cursor_incomplete
-
-    print(
-        f"  ⚠️ {activity_type} timestamp fallback returned fewer rows "
-        f"({len(cursor_items)} < {len(items)}); keeping the offset result and "
-        "marking it incomplete",
-        flush=True,
-    )
-    return items, True
-
-
-POSITIONS_OFFSET_CAP = 9500  # API cap is 10000, leave margin
+            checkpoint.save()
+    return totals
 
 
 def fetch_positions(
@@ -573,67 +381,82 @@ def fetch_positions(
     address: str,
     progress_cb: ProgressCallback | None = None,
 ) -> tuple[list[dict], bool]:
-    """Fetch all open positions for an address.
-
-    Returns:
-        (items, truncated): items list and whether the result was truncated by API cap.
-    """
+    """Fetch OPEN (including unredeemed) positions and preserve the v1 row keys."""
     items: list[dict] = []
-    offset = 0
-    truncated = False
-
-    while True:
-        resp = _fetch_with_retry(client, POSITIONS_API, {
-            "user": address,
-            "sizeThreshold": 0,
-            "limit": PAGE_LIMIT,
-            "offset": offset,
-        })
-        records = resp.json()
-        if progress_cb is not None:
-            progress_cb({
-                "activity_type": "POSITIONS",
-                "page": (offset // PAGE_LIMIT) + 1,
-                "rows": len(records),
-                "mode": "offset",
-                "offset": offset,
-            })
-
-        if not records:
-            break
-
-        items.extend(records)
-
-        if len(records) < PAGE_LIMIT:
-            break
-
-        offset += len(records)
-        if offset >= POSITIONS_OFFSET_CAP:
-            # Was the last page full? If so, there are likely more records
-            if len(records) == PAGE_LIMIT:
-                truncated = True
-                print(f"  ⚠️ positions offset {offset} hit API cap, result is TRUNCATED", flush=True)
-            break
-        time.sleep(REQUEST_DELAY)
-
-    return items, truncated
+    incomplete = False
+    params = {
+        "user": address, "status": "OPEN", "filter_type": "TOKENS",
+        "filter_amount": 0, "include_archived": "true", "limit": PAGE_LIMIT,
+    }
+    for rows, _, incomplete in _v2_pages(
+        client, POSITIONS_API, params, progress_cb, label="POSITIONS",
+    ):
+        for row in rows:
+            size = _number(row, "current_size")
+            price = _number(row, "current_price") if size > 0 else 0.0
+            if size < 0 or price < 0:
+                raise ValueError("Negative current position size/price")
+            items.append({**row, "size": size, "curPrice": price})
+    return items, incomplete
 
 
 def fetch_leaderboard(client: httpx.Client, top_n: int) -> list[dict]:
-    """Fetch leaderboard top N."""
-    resp = client.get(
-        LEADERBOARD_API,
-        params={
-            "timePeriod": "all",
-            "orderBy": "PNL",
-            "category": "overall",
-            "limit": top_n,
-            "offset": 0,
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    """Fetch the top N board rows across v2 cursors, retaining proxyWallet."""
+    if type(top_n) is not int or top_n <= 0:
+        raise ValueError("Leaderboard size must be a positive integer")
+    items: list[dict] = []
+    params = {
+        "time_period": "all", "sort_by": "PNL", "category": "overall",
+        "limit": min(top_n, PAGE_LIMIT),
+    }
+    for rows, _, incomplete in _v2_pages(client, LEADERBOARD_API, params, label="LEADERBOARD"):
+        if incomplete:
+            raise ValueError("Incomplete leaderboard: repeated cursor")
+        for row in rows:
+            wallet = row.get("user_id")
+            if not isinstance(wallet, str) or not wallet:
+                raise ValueError("Unavailable leaderboard user_id")
+            mapped = {**row, "proxyWallet": wallet, "userName": row.get("user_name")}
+            # Unavailable leaderboard PnL is a missing comparison, never zero.
+            mapped["pnl"] = _number(row, "pnl") if row.get("pnl") is not None else None
+            items.append(mapped)
+            if len(items) == top_n:
+                return items
+    return items
+
+
+# Do not invent accounting rules for v2 event types outside the original formula.
+UNSUPPORTED_ACTIVITY_TYPES = (
+    "MIGRATION", "YIELD", "TAKER_REBATE", "DIRECTIONAL_SPLIT",
+    "DIRECTIONAL_MERGE", "THRESHOLD_COMPOSE", "THRESHOLD_DECOMPOSE", "TIP",
+)
+
+
+def _unsupported_activity(client: httpx.Client, address: str) -> list[str]:
+    params = _activity_params(address, ",".join(UNSUPPORTED_ACTIVITY_TYPES), 1)
+    for rows, _, incomplete in _v2_pages(client, ACTIVITY_API, params, label="UNSUPPORTED"):
+        if incomplete:
+            return ["unsupported_activity_probe_incomplete"]
+        if rows:
+            kind = rows[0].get("type")
+            if kind not in UNSUPPORTED_ACTIVITY_TYPES:
+                raise ValueError(f"Unexpected activity type in unsupported probe: {kind!r}")
+            return [f"unsupported_activity:{kind}"]
+    return []
+
+
+def _combo_activity(client: httpx.Client, address: str) -> list[str]:
+    # Combo lifecycle events can exist without a base TRADE marked is_combo.
+    # This route has no start/sort parameters; presence alone limits coverage.
+    params = {"user": address, "limit": 1}
+    for rows, _, incomplete in _v2_pages(
+        client, COMBO_ACTIVITY_API, params, label="COMBOS",
+    ):
+        if incomplete:
+            return ["combo_activity_probe_incomplete"]
+        if rows:
+            return ["combo_positions_not_replayed"]
+    return []
 
 
 # ── Core computation ─────────────────────────────────────────────────
@@ -649,6 +472,7 @@ def compute_address_pnl(
     addr_short = address[:10]
     any_pagination_incomplete = False
     incomplete_types: list[str] = []
+    data_reasons: set[str] = set()
 
     def emit_progress(event: dict) -> None:
         if not verbose:
@@ -657,7 +481,7 @@ def compute_address_pnl(
         page = event.get("page", "?")
         rows = event.get("rows", "?")
         mode = event.get("mode", "unknown")
-        location = f"offset={event['offset']}" if "offset" in event else f"end={event.get('boundary_end')}"
+        location = f"cursor={event.get('cursor')!r}"
         print(f"  {addr_short}... {activity_type} page={page} rows={rows} mode={mode} {location}", flush=True)
 
     # 1. Fetch TRADE activity (BUY + SELL)
@@ -668,6 +492,9 @@ def compute_address_pnl(
             checkpoint=trade_checkpoint,
             progress_cb=emit_progress,
         )
+        data_reasons.update(trade_totals["data_incomplete_reasons"])
+        if trade_totals["resumed"]:
+            data_reasons.add("resumed_trade_checkpoint_requires_fresh_snapshot")
         pi = bool(trade_totals["pagination_incomplete"])
         any_pagination_incomplete |= pi
         if pi:
@@ -680,6 +507,8 @@ def compute_address_pnl(
     else:
         trades, pi = fetch_activity_all(client, address, "TRADE", progress_cb=emit_progress)
         any_pagination_incomplete |= pi
+        if any(t.get("is_combo") is True for t in trades):
+            data_reasons.add("combo_positions_not_replayed")
         if pi:
             incomplete_types.append("TRADE")
         buys = [t for t in trades if t.get("side") == "BUY"]
@@ -697,6 +526,8 @@ def compute_address_pnl(
 
     # 2. Fetch REDEEM activity
     redeems, pi = fetch_activity_all(client, address, "REDEEM", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in redeems):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("REDEEM")
@@ -709,6 +540,8 @@ def compute_address_pnl(
 
     # 3. Fetch MERGE activity (collateral returned from merging complementary tokens)
     merges, pi = fetch_activity_all(client, address, "MERGE", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in merges):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("MERGE")
@@ -721,6 +554,8 @@ def compute_address_pnl(
 
     # 4. Fetch SPLIT activity (collateral spent to mint complementary tokens)
     splits, pi = fetch_activity_all(client, address, "SPLIT", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in splits):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("SPLIT")
@@ -733,6 +568,8 @@ def compute_address_pnl(
 
     # 5. Fetch MAKER_REBATE activity
     rebates, pi = fetch_activity_all(client, address, "MAKER_REBATE", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in rebates):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("MAKER_REBATE")
@@ -745,6 +582,8 @@ def compute_address_pnl(
 
     # 5b. Fetch REWARD activity (platform rewards/airdrops — inflow)
     rewards, pi = fetch_activity_all(client, address, "REWARD", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in rewards):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("REWARD")
@@ -757,6 +596,8 @@ def compute_address_pnl(
 
     # 5c. Fetch REFERRAL_REWARD activity (affiliate referral income — inflow)
     referrals, pi = fetch_activity_all(client, address, "REFERRAL_REWARD", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in referrals):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("REFERRAL_REWARD")
@@ -769,10 +610,16 @@ def compute_address_pnl(
 
     # 5d. Fetch CONVERSION activity (token conversion — inflow)
     conversions, pi = fetch_activity_all(client, address, "CONVERSION", progress_cb=emit_progress)
+    if any(r.get("is_combo") is True for r in conversions):
+        data_reasons.add("combo_positions_not_replayed")
     any_pagination_incomplete |= pi
     if pi:
         incomplete_types.append("CONVERSION")
     total_conversion = sum(float(r.get("usdcSize", 0)) for r in conversions)
+    if conversions:
+        data_reasons.add("conversion_collateral_not_fully_represented")
+    data_reasons.update(_unsupported_activity(client, address))
+    data_reasons.update(_combo_activity(client, address))
 
     if verbose and conversions:
         print(f"  {addr_short}... CONVERSION: {len(conversions)} records, ${total_conversion:,.2f}", flush=True)
@@ -785,7 +632,7 @@ def compute_address_pnl(
     open_count = 0
     for p in positions:
         size = float(p.get("size", 0))
-        cur_price = float(p.get("curPrice") or 0)  # handle null curPrice
+        cur_price = p["curPrice"]  # Missing positive-position prices were rejected at intake.
         if size > 0:
             unrealized += size * cur_price
             open_count += 1
@@ -801,7 +648,9 @@ def compute_address_pnl(
     pnl_inclusive = pnl + total_reward + total_referral + total_conversion
 
     # Completeness flags
-    is_complete = not pos_truncated and not any_pagination_incomplete
+    if not all(math.isfinite(value) for value in (pnl, pnl_inclusive, unrealized)):
+        raise ValueError("Non-finite PnL aggregate")
+    is_complete = not pos_truncated and not any_pagination_incomplete and not data_reasons
 
     if verbose:
         extras = ""
@@ -816,6 +665,8 @@ def compute_address_pnl(
             flags += " [POSITIONS_TRUNCATED]"
         if any_pagination_incomplete:
             flags += " [PAGINATION_INCOMPLETE]"
+        if data_reasons:
+            flags += " [DATA_INCOMPLETE: " + ", ".join(sorted(data_reasons)) + "]"
         print(
             f"  {addr_short}... PnL: ${pnl:,.2f} (inclusive: ${pnl_inclusive:,.2f})"
             f"  sell=${total_sell:,.2f} + redeem=${total_redeem:,.2f}"
@@ -848,6 +699,7 @@ def compute_address_pnl(
         positions_truncated=pos_truncated,
         pagination_incomplete=any_pagination_incomplete,
         pagination_incomplete_types=incomplete_types or None,
+        data_incomplete_reasons=sorted(data_reasons) or None,
     )
 
 
@@ -897,15 +749,22 @@ def run_benchmark(
     leaderboard: list[dict] | None,
     local_pnl_index: dict[str, float] | None,
 ) -> None:
-    """Compare precise PnL against leaderboard and/or local pipeline."""
+    """Compare complete replay rows only; leaderboard is a different PnL basis."""
+    incomplete_count = sum(not res.complete for res in precise_results)
+    if incomplete_count:
+        print(f"\nExcluded {incomplete_count} INCOMPLETE result(s) from benchmark statistics.")
+    precise_results = [res for res in precise_results if res.complete]
     if leaderboard:
-        lb_by_addr = {r["proxyWallet"].lower(): float(r["pnl"]) for r in leaderboard}
+        lb_by_addr = {
+            r["proxyWallet"].lower(): _number(r, "pnl")
+            for r in leaderboard if r.get("pnl") is not None
+        }
 
         print("\n" + "=" * 80)
-        print("Benchmark: Precise PnL vs Leaderboard (official /profit)")
+        print("Comparison: Cashflow replay vs v2 all-time leaderboard (realized-only; different basis)")
         print("=" * 80)
 
-        errors = []
+        differences = []
         for res in precise_results:
             lb_pnl = lb_by_addr.get(res.address)
             if lb_pnl is None:
@@ -913,19 +772,16 @@ def run_benchmark(
             if abs(lb_pnl) < 1:
                 continue
             err = abs(res.pnl - lb_pnl) / abs(lb_pnl)
-            errors.append(err)
-            match = "✅" if err < 0.10 else "⚠️" if err < 0.30 else "❌"
+            differences.append(err)
             print(
-                f"  {match} {res.address[:12]}... "
+                f"  {res.address[:12]}... "
                 f"precise=${res.pnl:>12,.2f}  leaderboard=${lb_pnl:>12,.2f}  "
-                f"err={err:.1%}"
+                f"relative_difference={err:.1%}"
             )
 
-        if errors:
-            mape = statistics.mean(errors)
-            within_10 = sum(1 for e in errors if e < 0.10)
-            within_30 = sum(1 for e in errors if e < 0.30)
-            print(f"\n  MAPE: {mape:.1%} | <10%: {within_10}/{len(errors)} | <30%: {within_30}/{len(errors)}")
+        if differences:
+            mean_difference = statistics.mean(differences)
+            print(f"\n  Mean relative difference: {mean_difference:.1%} | compared: {len(differences)} (not an accuracy score)")
 
     if local_pnl_index:
         print("\n" + "=" * 80)
@@ -1042,6 +898,8 @@ def main() -> None:
             flags = ""
             if not result.complete:
                 flags = " ⚠️ INCOMPLETE"
+                if result.data_incomplete_reasons:
+                    flags += " [" + ",".join(result.data_incomplete_reasons) + "]"
                 if result.positions_truncated:
                     flags += " [pos_truncated]"
                 if result.pagination_incomplete:
@@ -1067,14 +925,15 @@ def main() -> None:
 
     incomplete = [r for r in results if not r.complete]
     if incomplete:
-        print(f"[PrecisePnL] Incomplete: {len(incomplete)} addresses (truncated or pagination-incomplete)")
+        print(f"[PrecisePnL] Incomplete: {len(incomplete)} addresses (pagination or economic coverage incomplete)")
 
     if failed:
         print(f"[PrecisePnL] Failed addresses: {', '.join(a[:12] for a in failed)}")
 
     # Summary
     if results:
-        sorted_by_pnl = sorted(results, key=lambda r: r.pnl, reverse=True)
+        sorted_by_pnl = sorted((r for r in results if r.complete), key=lambda r: r.pnl, reverse=True)
+        print("\n  Rankings include complete results only.")
         print(f"\n  Top 5:")
         for r in sorted_by_pnl[:5]:
             print(f"    {r.address[:14]}...  ${r.pnl:>12,.2f}")
@@ -1087,7 +946,7 @@ def main() -> None:
         run_benchmark(results, leaderboard_data, local_pnl_index)
 
     # Exit code: non-zero if any failures or incomplete results
-    if failed:
+    if failed or incomplete:
         sys.exit(1)
 
 

@@ -1,23 +1,30 @@
 ---
 name: polymarket-pnl
-description: Precise PnL calculator for any Polymarket address — reconstructs profit/loss from Data API cashflow (BUY/SELL/REDEEM/MERGE/SPLIT/REBATE) plus unrealized position value. Matches official /profit within ~0.2% MAPE on leaderboard validation. Bring-your-own Python (httpx).
+description: Reconstruct Polymarket PnL from Data API v2 cashflows (BUY/SELL/REDEEM/MERGE/SPLIT/MAKER_REBATE) plus current position value, with cursor pagination and explicit completeness flags. Bring-your-own Python (httpx).
 allowed-tools: Bash(python3:*) Read Write Edit
 metadata: {"version":"0.3.0","openclaw":{"skillKey":"polymarket-pnl","homepage":"https://leolabs.me","requires":{"anyBins":["python3"]}}}
 ---
 
 # Polymarket Precise PnL
 
-Compute precise, audit-grade PnL for any Polymarket address via the Data API cashflow method. Unlike position-level approximations used by most profilers, this reconstructs every BUY / SELL / REDEEM / MERGE / SPLIT / REBATE event and reconciles against current unrealized position value.
+Reconstruct PnL from the activity and positions served by Data API v2. The original cashflow formulas remain unchanged:
 
-Validated against Polymarket's official `/profit` endpoint on the public leaderboard: **MAPE ~0.2%**, all top accounts within 1% error.
+```text
+pnl = SELL + REDEEM + MERGE + MAKER_REBATE - BUY - SPLIT + current_position_value
+pnl_inclusive = pnl + REWARD + REFERRAL_REWARD + CONVERSION
+```
+
+Activity cash amounts come from `usdc_size`, preserving the existing fee-inclusive cash basis; do not replace them with `size * price` or subtract position entry fees again. Position value remains `current_size * current_price`, not the API's `unrealized_pnl` or lifetime `total_size`.
+
+`complete=true` means the API cursor walks finished and no supported check found missing data or unsupported economics. It is not proof of a complete on-chain ledger. Earlier v1 validation claims (~0.2% MAPE and top accounts within 1%) do not establish v2 accuracy. The v2 all-time leaderboard is realized-only, so it is a different metric from this formula that includes current holdings.
 
 ## Trigger
 
 Invoke this skill when the user wants:
 
-- Audit-grade PnL for one or more Polymarket addresses
+- Cashflow PnL with explicit data limitations for one or more Polymarket addresses
 - Bulk PnL over a leaderboard or an address list
-- Benchmark mode: compare a local PnL dataset vs. the official /profit values
+- Benchmark mode: compare a local PnL dataset with a fresh cashflow reconstruction
 
 If the user just wants a quick profile (win rate, positions, category breakdown), use the `polymarket-profile` skill instead — it's lighter and runs on curl alone.
 
@@ -58,6 +65,8 @@ python3 compute_precise_pnl.py --leaderboard 100 \
 
 Output is JSONL streamed to `--output` (default: `./precise_pnl.jsonl`).
 
+The CLI exits with status 1 if any address fails or yields an incomplete result. A valid but incomplete record remains in JSONL with its flags; it is excluded from rankings and comparison statistics. Missing required amounts/prices or invalid response envelopes fail the address without emitting a misleading numeric record.
+
 ## Output schema
 
 Each line is one address record:
@@ -72,28 +81,33 @@ Each line is one address record:
 | `open_positions` | int | Number of open positions |
 | `trade_count` | int | Total BUY + SELL events |
 | `computed_at` | int | Unix seconds when record was produced |
-| `complete` | bool | `True` if every paginated activity call returned fully |
-| `pagination_incomplete` | bool | `True` if the Data API's ~10k offset ceiling was hit for at least one activity type |
-| `pagination_incomplete_types` | list\[str\] \| None | Which activity types hit the ceiling (`"BUY"`, `"SELL"`, ...) |
+| `complete` | bool | `True` only when activity/position cursor walks finish and no known economic coverage flag is present; scoped to API-served data |
+| `positions_truncated` | bool | Position pagination could not reach a verified terminal page |
+| `pagination_incomplete` | bool | An activity cursor walk was stopped by a repeated cursor |
+| `pagination_incomplete_types` | list\[str\] \| None | Affected streams, such as `"TRADE"`, `"REDEEM"`, `"MERGE"` |
+| `data_incomplete_reasons` | list\[str\] \| None | Known economic coverage or resumed-snapshot limitations |
 
 ## Known limitations
 
-- **Data API offset ceiling (~10k)**: extremely high-frequency accounts may hit it on one activity type. The record is still emitted with `pagination_incomplete=True` and the field list so you can flag or re-fetch via timestamp-chunked backfill.
-- **Same-second full-page boundary**: the timestamp-based pagination uses `end = oldest - 1` with a heuristic backfill pass that only triggers when the boundary timestamp already appears more than once in the current page. If a full page ends with exactly one row at timestamp `T` and additional same-second rows continue onto the next page, those rows may be skipped without `pagination_incomplete` being set. This affects a small subset of very-high-frequency accounts; most addresses stay within 1% of the official `/profit`. A stricter backfill is on the roadmap.
-- **`pnl` vs `pnl_inclusive` choice**: Polymarket's official `/profit` endpoint inconsistently includes platform credits across addresses. The primary `pnl` field deliberately excludes them so the number is reproducible from public trade data alone.
+- **API coverage**: `start=1` requests full served activity history rather than the default three-year window. Positions request `status=OPEN` (including unredeemed positions), `filter_type=TOKENS`, `filter_amount=0`, and `include_archived=true`. Upstream inactive-market exclusion, dust handling, indexer lag, or omitted events can still limit coverage; this script does not independently replay chain logs or value external token transfers.
+- **New economic events**: the script probes `MIGRATION`, `YIELD`, `TAKER_REBATE`, `DIRECTIONAL_SPLIT`, `DIRECTIONAL_MERGE`, `THRESHOLD_COMPOSE`, `THRESHOLD_DECOMPOSE`, and `TIP`. Presence sets `complete=false` with `unsupported_activity:<TYPE>`; their cashflows are not silently added to the old formula. Future API event types require contract review. Deposits/withdrawals are capital flows, not trading income.
+- **Combos and CONVERSION**: observed `is_combo=true`, any record from the separate `/v2/activity/combos` presence probe, or any CONVERSION marks the result incomplete because combo positions and neg-risk conversion collateral are not fully replayed. Existing amounts/formulas are retained for review, not promoted to an exact total.
+- **Snapshot timing**: the separate activity streams and position marks are not one atomic snapshot. Resuming a TRADE checkpoint sets `resumed_trade_checkpoint_requires_fresh_snapshot`; run a fresh computation for a complete result. v1 or mismatched checkpoint identities restart from zero; malformed current-schema state is rejected.
+- **`pnl` vs `pnl_inclusive`**: REWARD, REFERRAL_REWARD, and CONVERSION remain excluded from `pnl` and included in `pnl_inclusive`. The all-time leaderboard comparison reports relative differences, not an accuracy score. Compare with an independently reconciled ledger using the same time and accounting basis for accuracy validation.
+- **Pagination**: v2 opaque cursors replace all offset caps and timestamp subtraction. Short/empty pages with a cursor are followed, identical fills are retained, and repeated cursors are flagged. An HTTP/schema failure fails the address instead of treating a partial prefix as zero or complete.
 - **Requires `httpx`**: the only third-party dependency, for its robust TLS/HTTP/1.1 handling against the Data API.
-- **No authentication**: uses only public endpoints (`data-api.polymarket.com`, `gamma-api.polymarket.com`), so there are no API keys to manage but also no access to private endpoints.
+- **No authentication**: uses public `data-api.polymarket.com` endpoints, with no API keys or private account data.
 
 ## Comparison with `polymarket-profile`
 
 | Aspect | `polymarket-profile` | `polymarket-pnl` (this skill) |
 |--------|---------------------|-------------------------------|
 | Runtime | curl + jq / node | Python 3 + httpx |
-| PnL accuracy | Position-level cashPnL (approximate) | Cashflow reconstruction (~0.2% MAPE) |
+| PnL method | Position-level cashPnL (approximate) | Activity cashflow plus current holdings, with completeness flags |
 | Bulk mode | Single address per call | Single / leaderboard / address list |
 | Win rate / categories | ✅ | ❌ (PnL only) |
 | Benchmarking | ❌ | ✅ vs local dataset |
-| Best for | "Who is this address?" | "What is their audit-grade PnL?" |
+| Best for | "Who is this address?" | "What PnL can public cashflows support, and what is missing?" |
 
 Use them together: `polymarket-profile` for the qualitative picture, `polymarket-pnl` when the PnL number has to hold up to scrutiny.
 
@@ -103,9 +117,12 @@ All public, no authentication required:
 
 | API | What it provides |
 |-----|-----------------|
-| `data-api.polymarket.com/activity` | BUY / SELL / REDEEM / MERGE / SPLIT / REBATE / REWARD / REFERRAL_REWARD / CONVERSION events |
-| `data-api.polymarket.com/positions` | Current open positions, for unrealized value |
-| `data-api.polymarket.com/v1/leaderboard` | Ranked addresses with official `/profit` values |
+| `data-api.polymarket.com/v2/activity` | TRADE (BUY/SELL), REDEEM, MERGE, SPLIT, MAKER_REBATE, REWARD, REFERRAL_REWARD, CONVERSION; separate unsupported-event probe |
+| `data-api.polymarket.com/v2/activity/combos` | Detect combo lifecycle events not represented by the original formula |
+| `data-api.polymarket.com/v2/positions` | Current held position sizes/prices, including unredeemed positions |
+| `data-api.polymarket.com/v2/leaderboard` | Ranked addresses; all-time PnL is realized-only |
+
+Contract references: [v2 migration](https://docs.polymarket.com/migrate/data-api-v1-to-v2), [activity](https://docs.polymarket.com/api-reference/feeds/list-account-activity), [positions](https://docs.polymarket.com/api-reference/wallet/list-positions-for-a-user-or-market), [leaderboard](https://docs.polymarket.com/api-reference/boards/get-the-trader-leaderboard).
 
 ## Setup
 
