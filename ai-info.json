@@ -3,8 +3,8 @@
   "schema_version": "1.0",
   "id": "polymarket-toolkit",
   "identity_version": "1.0",
-  "last_verified_at": "2026-08-20",
-  "source_revision": "26ccbcf8de83a4ee1a86a98f2dc19a3a76cef521",
+  "last_verified_at": "2026-11-15",
+  "source_revision": "27b55137cc13dc4cb3a756aa4d45fbe9c7d75301",
   "name": "Polymarket Toolkit",
   "canonical_url": "https://github.com/runesleo/polymarket-toolkit",
   "ai_info_url": "https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json",
@@ -37,9 +37,9 @@
     "mcp": {
       "registry_name": "io.github.runesleo/polymarket-toolkit",
       "npm_package": "polymarket-toolkit-mcp",
-      "package_version": "0.7.2",
+      "package_version": "0.7.3",
       "transport": "stdio",
-      "install_command": "npx -y polymarket-toolkit-mcp",
+      "install_command": "npx -y polymarket-toolkit-mcp@0.7.3",
       "tools": [
         "pm_profile",
         "pm_activity",
@@ -83,7 +83,7 @@
   ],
   "limitations": [
     "Public APIs can change, rate-limit, time out, or return incomplete data; command-specific warnings and cutoff metadata must be preserved.",
-    "Cursor or offset pagination can repeat or stall near a community-reported approximately 4,000 effective rows; separately, /activity rejects offsets above the measured 5,000 hard limit. Preserve duplicate-page, stale-cursor, fallback, and completeness warnings for deeper histories.",
+    "Data API v2 uses cursor pagination and has per-request page limits (up to 1,000 rows). Preserve duplicate-page, stale-cursor, and INCOMPLETE warnings when a maxPages cutoff truncates a deeper history; the retired v1 4,000/5,000 offset caps do not apply.",
     "pm profile and pm pnl-check are screening and cross-check tools; use the polymarket-pnl skill and preserve its completeness flags when the number must withstand audit.",
     "Some public endpoints may be unavailable from particular networks or jurisdictions."
   ],

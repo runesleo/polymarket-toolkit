@@ -14,11 +14,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- Glama metadata and a root Docker entrypoint pinned to the official `polymarket-toolkit-mcp@0.7.2` package.
+- Glama metadata and a root Docker entrypoint pinned to the official `polymarket-toolkit-mcp@0.7.3` package.
 - Regression coverage for the Docker package selection, maintainer metadata, official npm registry, and packed executable mode.
 
 ### Fixed
 
+- Update the MCP SDK and Zod runtime dependencies to supported patched versions, with lockfile audit and packed-package regression coverage.
+- Prepare MCP npm `0.7.3` with the Data API v2 CLI bundle instead of the retired v1 endpoints (HTTP 410); align the installed server version and published package metadata.
+- Validate the packed MCP server and its read-only tools before release, rather than trusting source-only tests.
 - MCP package builds now preserve executable permissions on `dist/server.js`, so npm-installed stdio clients can start the declared binary.
 
 ## [0.5.0] - 2026-05-26

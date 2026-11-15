@@ -6,12 +6,12 @@
     "url": "https://github.com/runesleo/polymarket-toolkit",
     "source": "github"
   },
-  "version": "0.7.2",
+  "version": "0.7.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "polymarket-toolkit-mcp",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "transport": {
         "type": "stdio"
       }

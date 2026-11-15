@@ -1,6 +1,6 @@
 {
   "name": "polymarket-toolkit-mcp",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "MCP server exposing polymarket-toolkit's read-only Polymarket data CLI as tools for AI agents. No keys, no orders \u2014 data only.",
   "type": "module",
   "bin": {
@@ -35,8 +35,8 @@
     "claude"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^3.24.0"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
