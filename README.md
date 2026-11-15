@@ -115,8 +115,9 @@ cents per share. Negative means the price walked away from you — adverse selec
 
 Three things this command does that a hand-rolled version usually gets wrong:
 
-- **Passive fills are included.** `/trades?user=` behaves like `takerOnly=true` by
-  default, so a market maker's entire passive side is missing unless you ask for it.
+- **Passive fills are included.** Upstream `/v2/trades?user=` defaults to
+  `taker_only=true`, which omits maker fills. The toolkit explicitly requests
+  `taker_only=false` to include both passive and aggressive fills.
 - **The reference is a windowed VWAP, not the next print.** Prints alternate between bid
   and ask, and that bounce alone makes every SELL look good and every BUY look bad.
 - **Everything is measured against a baseline** — the same tokens over the same span,
@@ -239,7 +240,7 @@ Inspect redeemable positions for a public proxy wallet without touching keys, al
 
 ### What you get
 
-- **Redeemable scan** — `fetchRedeemablePositionsPage(user)` calls Data API `/positions?redeemable=true`
+- **Redeemable scan** — `fetchRedeemablePositionsPage(user)` calls Data API `/v2/positions?status=REDEEMABLE`
 - **Condition rollup** — `summarizeRedeemablePositions(rows)` groups rows by `conditionId` and sums `currentValue` (losing rows contribute `$0`, which is the correct payable amount — not their `size`)
 - **Policy label** — `resolveRedeemMode({ lowWatermark })` returns `"watchdog"` or `"low_watermark"`. There is intentionally no `"active"` value: this toolkit never executes a redeem, so an active label belongs in your own wallet system, not here.
 

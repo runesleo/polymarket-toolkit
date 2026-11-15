@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-25T08:30:00+00:00",
+  "updated_at": "2026-11-15T11:03:54+00:00",
   "source": {
     "title": "Polymarket API rate limits",
     "url": "https://docs.polymarket.com/api-reference/rate-limits",
-    "notes": "Synced from public Polymarket API docs · Cloudflare throttling on sliding windows."
+    "notes": "Current Data API v2 limits; retired v1 routes are excluded. Cloudflare throttles on sliding windows."
   },
   "families": {
     "gamma": {
@@ -21,10 +21,10 @@
       "base_url": "https://data-api.polymarket.com",
       "auth": "none",
       "limits": [
-        {"scope": "general", "requests": 1000, "window_seconds": 10},
-        {"scope": "/trades", "requests": 200, "window_seconds": 10},
-        {"scope": "/positions", "requests": 150, "window_seconds": 10},
-        {"scope": "/closed-positions", "requests": 150, "window_seconds": 10}
+        {"scope": "general", "requests": 800, "window_seconds": 10},
+        {"scope": "/v2/trades", "requests": 300, "window_seconds": 10},
+        {"scope": "/v2/positions", "requests": 200, "window_seconds": 10},
+        {"scope": "/v2/activity", "requests": 200, "window_seconds": 10}
       ]
     },
     "clob": {
