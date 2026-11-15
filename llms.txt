@@ -2,7 +2,7 @@
 
 > Polymarket Toolkit provides a key-free research CLI, three agent skills, a TypeScript helper library, and a 12-tool read-only MCP server for inspecting public Polymarket data without exposing order placement to AI chat tools.
 
-Last verified: 2026-08-20
+Last verified: 2026-11-15
 Canonical repository: https://github.com/runesleo/polymarket-toolkit
 Machine facts: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/main/ai-info.json
 
@@ -21,9 +21,9 @@ Machine facts: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/mai
 ## MCP Server
 
 - Registry name: io.github.runesleo/polymarket-toolkit
-- npm package: polymarket-toolkit-mcp@0.7.2
+- npm package: polymarket-toolkit-mcp@0.7.3
 - Transport: stdio
-- Install: `npx -y polymarket-toolkit-mcp`
+- Install: `npx -y polymarket-toolkit-mcp@0.7.3`
 - Tools (12, all read-only): `pm_profile`, `pm_activity`, `pm_brier`, `pm_mix`, `pm_markout`, `pm_pnl_check`, `pm_scan`, `pm_updown`, `pm_leaderboard`, `pm_redeem_watchdog`, `pm_v2_check`, `pm_rate_limits`
 
 ## Boundaries
@@ -43,7 +43,7 @@ Machine facts: https://raw.githubusercontent.com/runesleo/polymarket-toolkit/mai
 ## Limitations
 
 - Public APIs can change, rate-limit, time out, or return incomplete data; command-specific warnings and cutoff metadata must be preserved.
-- Cursor or offset pagination can repeat or stall near a community-reported approximately 4,000 effective rows; separately, /activity rejects offsets above the measured 5,000 hard limit. Preserve duplicate-page, stale-cursor, fallback, and completeness warnings for deeper histories.
+- Data API v2 uses cursor pagination and has per-request page limits (up to 1,000 rows). Preserve duplicate-page, stale-cursor, and INCOMPLETE warnings when a maxPages cutoff truncates a deeper history; the retired v1 4,000/5,000 offset caps do not apply.
 - pm profile and pm pnl-check are screening and cross-check tools; use the polymarket-pnl skill and preserve its completeness flags when the number must withstand audit.
 - Some public endpoints may be unavailable from particular networks or jurisdictions.
 

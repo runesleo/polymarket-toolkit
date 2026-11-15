@@ -1,0 +1,54 @@
+name: MCP release checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp/package-lock.json
+
+      - name: Install core dependencies from the official registry
+        run: npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+
+      - name: Install MCP dependencies from the official registry
+        working-directory: mcp
+        run: npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+
+      - name: Check core types and data/API regression tests
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Check generated AI discovery and plugin metadata
+        run: npm run check:ai-discovery
+
+      - name: Check MCP types, real packed binary, and read-only tools
+        working-directory: mcp
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Audit production dependencies
+        working-directory: mcp
+        run: npm audit --omit=dev --registry=https://registry.npmjs.org
+
+      - name: Verify npm publication file list
+        working-directory: mcp
+        run: npm pack --dry-run --json --ignore-scripts

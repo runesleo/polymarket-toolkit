@@ -1,6 +1,6 @@
 {
   "name": "polymarket-toolkit",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Read-only Polymarket research for AI agents: wallet profiles, precise PnL, Brier scores and market scans from public APIs. No keys, no orders.",
   "author": {
     "name": "Leo",

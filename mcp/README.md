@@ -7,7 +7,7 @@ tools for AI agents. No keys, no orders — data only.
 ## Quick start
 
 ```bash
-claude mcp add polymarket-toolkit -- npx -y polymarket-toolkit-mcp
+claude mcp add polymarket-toolkit -- npx -y polymarket-toolkit-mcp@0.7.3
 ```
 
 Generic MCP client config:
@@ -17,7 +17,7 @@ Generic MCP client config:
   "mcpServers": {
     "polymarket-toolkit": {
       "command": "npx",
-      "args": ["-y", "polymarket-toolkit-mcp"]
+      "args": ["-y", "polymarket-toolkit-mcp@0.7.3"]
     }
   }
 }

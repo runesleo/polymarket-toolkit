@@ -1,4 +1,4 @@
-# MCP server (package v0.7.2) — toolkit tools for AI agents
+# MCP server (package v0.7.3) — toolkit tools for AI agents
 
 The [`mcp/`](../mcp) sub-package exposes the toolkit's **read-only** CLI as
 [Model Context Protocol](https://modelcontextprotocol.io) tools, so Claude, Codex, Cursor, or any
@@ -10,6 +10,14 @@ read-only CLI can do, nothing more. No keys, no orders, no local writes (`pm lb 
 exposed). Inputs are validated (charset allowlist, no leading dashes) before they ever reach argv.
 
 ## Setup
+
+Install the released npm package (once v0.7.3 has been published):
+
+```bash
+claude mcp add polymarket-toolkit -- npx -y polymarket-toolkit-mcp@0.7.3
+```
+
+To run directly from a cloned repository instead, install its source dependencies:
 
 ```bash
 cd mcp && npm install

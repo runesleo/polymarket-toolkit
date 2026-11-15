@@ -30,7 +30,7 @@ function sourceToolNames() {
 
 test("canonical identity is explicit and generated JSON preserves it", () => {
   assert.equal(identity.schema_version, "1.0");
-  assert.equal(identity.last_verified_at, "2026-08-20");
+  assert.equal(identity.last_verified_at, "2026-11-15");
   assert.equal(aiInfo.generated_from, "content/ai-identity.json");
   for (const [key, value] of Object.entries(identity)) assert.deepEqual(aiInfo[key], value, key);
   assert.equal(identity.is_accessible_for_free, true);
@@ -40,10 +40,10 @@ test("canonical identity is explicit and generated JSON preserves it", () => {
   const limitations = identity.limitations.join(" ");
   assert.equal(ACTIVITY_API_ROW_CAP_HINT, 4000);
   assert.equal(ACTIVITY_OFFSET_CAP, 5000);
-  assert.match(limitations, /4,000 effective rows/);
-  assert.match(limitations, /5,000 hard limit/);
-  assert.match(limitations, /repeat or stall/);
-  assert.match(limitations, /offsets above/);
+  assert.match(limitations, /Data API v2 uses cursor pagination/);
+  assert.match(limitations, /1,000 rows/);
+  assert.match(limitations, /INCOMPLETE warnings/);
+  assert.match(limitations, /retired v1 4,000\/5,000 offset caps do not apply/);
 });
 
 test("MCP catalogue and all package manifests stay aligned", () => {
@@ -57,6 +57,10 @@ test("MCP catalogue and all package manifests stay aligned", () => {
   assert.equal(server.packages[0].version, mcpPackage.version);
   assert.equal(server.packages[0].identifier, identity.capabilities.mcp.npm_package);
   assert.equal(server.name, identity.capabilities.mcp.registry_name);
+  for (const client of [".claude-plugin", ".codex-plugin", ".cursor-plugin"]) {
+    const plugin = JSON.parse(readFileSync(resolve(root, client, "plugin.json"), "utf8"));
+    assert.equal(plugin.version, mcpPackage.version, `${client} plugin version drift`);
+  }
 });
 
 test("human and machine docs expose every implemented tool without trading overclaim", () => {

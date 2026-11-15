@@ -5,8 +5,15 @@ import test from "node:test";
 test("Glama Dockerfile installs the official pinned MCP package", async () => {
   const dockerfile = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
 
+  const packageJson = JSON.parse(
+    await readFile(new URL("../mcp/package.json", import.meta.url), "utf8"),
+  ) as { version: string };
+
   assert.match(dockerfile, /^FROM node:20-slim$/m);
-  assert.match(dockerfile, /^RUN npm install -g polymarket-toolkit-mcp@0\.7\.2$/m);
+  assert.ok(
+    dockerfile.split("\n").includes(`RUN npm install -g polymarket-toolkit-mcp@${packageJson.version}`),
+    "Docker package pin must match the MCP package version",
+  );
   assert.match(dockerfile, /^ENTRYPOINT \["polymarket-toolkit-mcp"\]$/m);
   assert.doesNotMatch(dockerfile, /npm install -g polymarket-toolkit(?:@|\s|$)/m);
 });

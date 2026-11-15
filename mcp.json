@@ -5,7 +5,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "polymarket-toolkit-mcp@0.7.2"
+        "polymarket-toolkit-mcp@0.7.3"
       ]
     }
   }
