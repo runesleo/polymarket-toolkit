@@ -44,6 +44,12 @@ test("Data API registry uses current v2 scopes and published limits", () => {
   assert.equal(scopes.get("/v2/trades"), 300);
   assert.equal(scopes.get("/v2/positions"), 200);
   assert.equal(scopes.get("/v2/activity"), 200);
+  assert.equal(scopes.get("/v2/positions/combos"), 200);
+  assert.equal(scopes.get("/v2/activity/combos"), 200);
+  assert.equal(scopes.get("/v2/prices-history"), 200);
+  assert.equal(scopes.get("/v2/status"), 100);
+  assert.equal(suggestedDelaySeconds("data", "/v2/prices-history"), 0.0588);
+  assert.equal(suggestedDelaySeconds("data", "/v2/status"), 0.1176);
   assert.equal(scopes.has("/trades"), false);
   assert.equal(scopes.has("/positions"), false);
   assert.ok(suggestedDelaySeconds("data", "general") > 0);
