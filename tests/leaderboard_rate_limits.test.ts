@@ -36,3 +36,21 @@ test("loadRateLimitRegistry and suggestedDelaySeconds", () => {
   const delay = suggestedDelaySeconds("gamma", "general");
   assert.ok(delay > 0 && delay < 1);
 });
+
+test("Data API registry uses current v2 scopes and published limits", () => {
+  const data = loadRateLimitRegistry().families.data;
+  const scopes = new Map(data.limits.map(({ scope, requests }) => [scope, requests]));
+  assert.equal(scopes.get("general"), 800);
+  assert.equal(scopes.get("/v2/trades"), 300);
+  assert.equal(scopes.get("/v2/positions"), 200);
+  assert.equal(scopes.get("/v2/activity"), 200);
+  assert.equal(scopes.get("/v2/positions/combos"), 200);
+  assert.equal(scopes.get("/v2/activity/combos"), 200);
+  assert.equal(scopes.get("/v2/prices-history"), 200);
+  assert.equal(scopes.get("/v2/status"), 100);
+  assert.equal(suggestedDelaySeconds("data", "/v2/prices-history"), 0.0588);
+  assert.equal(suggestedDelaySeconds("data", "/v2/status"), 0.1176);
+  assert.equal(scopes.has("/trades"), false);
+  assert.equal(scopes.has("/positions"), false);
+  assert.ok(suggestedDelaySeconds("data", "general") > 0);
+});

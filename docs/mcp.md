@@ -11,7 +11,7 @@ exposed). Inputs are validated (charset allowlist, no leading dashes) before the
 
 ## Setup
 
-Install the released npm package (once v0.7.3 has been published):
+Install the released npm package:
 
 ```bash
 claude mcp add polymarket-toolkit -- npx -y polymarket-toolkit-mcp@0.7.3
