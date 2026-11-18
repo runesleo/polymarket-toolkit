@@ -92,6 +92,15 @@ test("the built and packed MCP bin is executable and has a Node shebang", async 
       const offlineContent = offlineResult.content;
       assert.ok(Array.isArray(offlineContent));
       assert.ok(offlineContent.length > 0);
+      const rateLimitText = offlineContent
+        .filter((item): item is { type: "text"; text: string } => item.type === "text")
+        .map((item) => item.text)
+        .join("\n");
+      for (const scope of ["/v2/positions/combos", "/v2/activity/combos", "/v2/prices-history", "/v2/status"]) {
+        assert.ok(rateLimitText.includes(scope), `packed MCP rate limits must show ${scope}`);
+      }
+      const packedRegistry = JSON.parse(await readFile(join(unpackedRoot, "docs/data/polymarket-api-rate-limits.json"), "utf8")) as { families: { data: { limits: Array<{ scope: string; requests: number }> } } };
+      assert.equal(packedRegistry.families.data.limits.find((item) => item.scope === "/v2/status")?.requests, 100);
     } finally {
       await client.close();
     }
