@@ -24,7 +24,11 @@
         {"scope": "general", "requests": 800, "window_seconds": 10},
         {"scope": "/v2/trades", "requests": 300, "window_seconds": 10},
         {"scope": "/v2/positions", "requests": 200, "window_seconds": 10},
-        {"scope": "/v2/activity", "requests": 200, "window_seconds": 10}
+        {"scope": "/v2/activity", "requests": 200, "window_seconds": 10},
+        {"scope": "/v2/positions/combos", "requests": 200, "window_seconds": 10},
+        {"scope": "/v2/activity/combos", "requests": 200, "window_seconds": 10},
+        {"scope": "/v2/prices-history", "requests": 200, "window_seconds": 10},
+        {"scope": "/v2/status", "requests": 100, "window_seconds": 10}
       ]
     },
     "clob": {
