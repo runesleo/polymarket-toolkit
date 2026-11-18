@@ -23,7 +23,7 @@ export async function runLimits(argv: string[]): Promise<void> {
     console.log(`Source: ${registry.source.url}\n`);
     for (const fam of summary) {
       console.log(`${fam.family} · ${fam.base_url}`);
-      for (const s of fam.scopes.slice(0, 4)) {
+      for (const s of fam.scopes) {
         console.log(`  ${s.scope}: ${s.requests}/${s.window_seconds}s · sleep ~${s.suggested_delay_s}s`);
       }
     }
